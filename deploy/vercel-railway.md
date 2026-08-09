@@ -28,7 +28,7 @@
 prisma generate → db push + seed → next build
 ```
 
-On each server cold start, `src/instrumentation.ts` runs the same idempotent seed again.
+Seeding happens only in that build step (via `scripts/bootstrap-db.ts`). Do not seed from Next.js `instrumentation` — it pulls Node-only `pg` into the webpack graph and breaks the Vercel build.
 
 ## 3. Local against Railway
 
@@ -49,6 +49,6 @@ npm run dev
 ## Notes
 
 - Seed is **upsert**-based; redeploys will not wipe staff you add later (except the seeded sample’s fixed fields are refreshed).
-- Set `SKIP_DB_SEED=1` if you want build-only seeding.
+- Set `SKIP_DB_SEED=1` to skip the build-time seed (schema push still runs unless you skip the whole bootstrap).
 - Photos on Vercel `/tmp` are not durable — plan object storage for production photos.
 - QR public URL length is capped (~62 bytes); prefer a short custom domain for `APP_URL`.

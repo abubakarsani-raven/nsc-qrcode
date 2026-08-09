@@ -28,6 +28,11 @@ async function main() {
     env: process.env,
   });
 
+  if (process.env.SKIP_DB_SEED === "1") {
+    console.log("[bootstrap-db] SKIP_DB_SEED=1 — schema pushed, seed skipped");
+    return;
+  }
+
   console.log("[bootstrap-db] Seeding…");
   const result = await seedDatabase();
   console.log("[bootstrap-db] Seed complete.");

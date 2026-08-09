@@ -31,7 +31,7 @@ Sign in: `admin@shipperscouncil.gov.ng` / `ChangeMeAdmin1!`
 
 1. Create **Postgres** on Railway → copy `DATABASE_URL` (add `?sslmode=require` if needed).
 2. Import the repo on **Vercel** and set env vars from `.env.example` (`DATABASE_URL`, `AUTH_SECRET`, `AUTH_URL`, `APP_URL`, admin creds).
-3. Deploy — build runs `prisma generate` → schema push + seed → `next build`. Seed also runs on Node startup via `src/instrumentation.ts`.
+3. Deploy — build runs `prisma generate` → schema push + seed → `next build`.
 
 Full steps: [deploy/vercel-railway.md](deploy/vercel-railway.md).
 
