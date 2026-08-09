@@ -4,14 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && tsx scripts/bootstrap-db.ts && next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:setup": "prisma db push && tsx prisma/seed.ts",
+    "db:setup": "prisma generate && tsx scripts/bootstrap-db.ts",
+    "db:bootstrap": "prisma generate && tsx scripts/bootstrap-db.ts",
     "extract-templates": "python3 scripts/extract-templates.py",
     "test:fidelity": "tsx scripts/fidelity-test.ts",
     "test:qr-budget": "tsx scripts/qr-budget-test.ts"
