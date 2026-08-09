@@ -1,0 +1,68 @@
+{
+  "fronts": {
+    "WAVE_GREEN": {
+      "page": 0,
+      "photos_removed": 1,
+      "texts_redacted": 0,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/fronts/WAVE_GREEN.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/fronts/WAVE_GREEN.png"
+    },
+    "WAVE_BLUE": {
+      "page": 2,
+      "photos_removed": 1,
+      "texts_redacted": 0,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/fronts/WAVE_BLUE.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/fronts/WAVE_BLUE.png"
+    },
+    "BAR_BLUE_SQUARE": {
+      "page": 4,
+      "photos_removed": 1,
+      "texts_redacted": 4,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/fronts/BAR_BLUE_SQUARE.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/fronts/BAR_BLUE_SQUARE.png"
+    },
+    "BAR_BLUE_CIRCLE": {
+      "page": 5,
+      "photos_removed": 1,
+      "texts_redacted": 4,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/fronts/BAR_BLUE_CIRCLE.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/fronts/BAR_BLUE_CIRCLE.png"
+    },
+    "BAR_GREEN_CIRCLE": {
+      "page": 7,
+      "photos_removed": 1,
+      "texts_redacted": 4,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/fronts/BAR_GREEN_CIRCLE.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/fronts/BAR_GREEN_CIRCLE.png"
+    },
+    "BAR_GREEN_SQUARE": {
+      "page": 8,
+      "photos_removed": 1,
+      "texts_redacted": 4,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/fronts/BAR_GREEN_SQUARE.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/fronts/BAR_GREEN_SQUARE.png"
+    }
+  },
+  "backs": {
+    "BACK_WAVE_GREEN": {
+      "page": 1,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/backs/BACK_WAVE_GREEN.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/backs/BACK_WAVE_GREEN.png"
+    },
+    "BACK_WAVE_BLUE": {
+      "page": 3,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/backs/BACK_WAVE_BLUE.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/backs/BACK_WAVE_BLUE.png"
+    },
+    "BACK_BAR_BLUE": {
+      "page": 6,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/backs/BACK_BAR_BLUE.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/backs/BACK_BAR_BLUE.png"
+    },
+    "BACK_BAR_GREEN": {
+      "page": 9,
+      "pdf": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/design/templates/backs/BACK_BAR_GREEN.pdf",
+      "png": "/Users/abubakarsani/Downloads/projects/shippers council/qrcode/public/id-card/templates/backs/BACK_BAR_GREEN.png"
+    }
+  }
+}

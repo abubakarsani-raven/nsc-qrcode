@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  DATA_ENTRY
+  APPROVER
+  PRINTER
+  ADMIN
+}
+
+enum StaffStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum ApprovalState {
+  PENDING
+  APPROVED
+}
+
+enum FrontTemplate {
+  WAVE_GREEN
+  WAVE_BLUE
+  BAR_BLUE_SQUARE
+  BAR_BLUE_CIRCLE
+  BAR_GREEN_CIRCLE
+  BAR_GREEN_SQUARE
+}
+
+enum BackTemplate {
+  BACK_WAVE_GREEN
+  BACK_WAVE_BLUE
+  BACK_BAR_BLUE
+  BACK_BAR_GREEN
+}
+
+enum AuditType {
+  CREATED
+  EDITED
+  APPROVED
+  PUBLISHED
+  QR_REGENERATED
+  SUSPENDED
+  REACTIVATED
+  PRINTED
+  PHOTO_REPLACED
+  IMPORTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(DATA_ENTRY)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  approvedStaff Staff[]          @relation("ApprovedBy")
+  published     StaffPublished[] @relation("PublishedBy")
+  auditEvents   AuditEvent[]
+  importBatches ImportBatch[]
+}
+
+model Staff {
+  id                       String         @id @default(cuid())
+  idNumber                 String         @unique
+  firstName                String
+  middleName               String?
+  lastName                 String
+  designation              String
+  posting                  String?
+  department               String?
+  dateIssued               DateTime?
+  status                   StaffStatus    @default(ACTIVE)
+  approvalState            ApprovalState  @default(PENDING)
+  approvedById             String?
+  approvedAt               DateTime?
+  hasPendingEdits          Boolean        @default(false)
+  officeLine               String?
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  bloodGroup               String?
+  genotype                 String?
+  photoOriginalKey         String?
+  photoPreviewKey          String?
+  photoCrop                String?
+  photoCapturedAt          DateTime?
+  frontTemplate            FrontTemplate  @default(WAVE_GREEN)
+  backTemplate             BackTemplate   @default(BACK_WAVE_GREEN)
+  lastPrintedAt            DateTime?
+  qrToken                  String         @unique
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+
+  approvedBy User?           @relation("ApprovedBy", fields: [approvedById], references: [id])
+  published  StaffPublished?
+  auditEvents AuditEvent[]
+
+  @@index([status])
+  @@index([approvalState])
+  @@index([lastName])
+  @@index([firstName])
+}
+
+model StaffPublished {
+  id                    String   @id @default(cuid())
+  staffId               String   @unique
+  publishedById         String
+  publishedAt           DateTime @default(now())
+  firstName             String
+  middleName            String?
+  lastName              String
+  designation           String
+  idNumber              String
+  photoPreviewKey       String?
+  officeLine            String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  posting               String?
+  department            String?
+  bloodGroup            String?
+  genotype              String?
+
+  staff       Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  publishedBy User  @relation("PublishedBy", fields: [publishedById], references: [id])
+}
+
+model AuditEvent {
+  id        String    @id @default(cuid())
+  staffId   String?
+  actorId   String
+  type      AuditType
+  metadata  String?
+  createdAt DateTime  @default(now())
+
+  staff Staff? @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  actor User   @relation(fields: [actorId], references: [id])
+
+  @@index([staffId])
+  @@index([createdAt])
+}
+
+model ImportBatch {
+  id          String   @id @default(cuid())
+  filename    String
+  actorId     String
+  rowCount    Int
+  createdCount Int
+  errorCount  Int
+  report      String
+  createdAt   DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+}

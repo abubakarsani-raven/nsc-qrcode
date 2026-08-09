@@ -1,0 +1,40 @@
+# DMZ reverse proxy — expose ONLY public verification.
+# Replace INTERNAL_APP and certificate paths before use.
+
+limit_req_zone $binary_remote_addr zone=verify:10m rate=30r/m;
+
+server {
+    listen 443 ssl http2;
+    server_name verify.shipperscouncil.gov.ng;
+
+    ssl_certificate     /etc/ssl/certs/verify.shipperscouncil.gov.ng.crt;
+    ssl_certificate_key /etc/ssl/private/verify.shipperscouncil.gov.ng.key;
+
+    # Public verification pages only
+    location /v/ {
+        limit_req zone=verify burst=20 nodelay;
+        proxy_pass http://INTERNAL_APP:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Real-IP $remote_addr;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+    }
+
+    # Narrow photo fetch for verify page (token-gated in app)
+    location /api/photos/ {
+        limit_req zone=verify burst=20 nodelay;
+        proxy_pass http://INTERNAL_APP:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location /_next/static/ {
+        proxy_pass http://INTERNAL_APP:3000;
+    }
+
+    location / {
+        return 404;
+    }
+}

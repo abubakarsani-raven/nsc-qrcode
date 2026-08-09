@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nsc
+      POSTGRES_PASSWORD: nsc_change_me
+      POSTGRES_DB: nsc_qrcode
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://nsc:nsc_change_me@db:5432/nsc_qrcode
+      AUTH_SECRET: change-me-in-production
+      APP_URL: https://verify.shipperscouncil.gov.ng
+      PHOTO_STORAGE_DIR: /data/photos
+    volumes:
+      - photos:/data/photos
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  photos:
