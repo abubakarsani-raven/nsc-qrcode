@@ -7,10 +7,19 @@
  * That produced the "saved successfully, but No photo" symptom — the DB row
  * recorded a key whose bytes no longer existed anywhere.
  *
- * Cloudinary is the backend whenever it is configured. Assets are uploaded as
- * `type: "authenticated"`, so they have no publicly reachable delivery URL;
- * bytes are fetched server-side and streamed through the existing auth-gated
- * /api/photos route. Access control therefore stays exactly where it was.
+ * Cloudinary is the backend whenever it is configured.
+ *
+ * Originals are uploaded straight from the browser to Cloudinary, not through
+ * this app: Vercel Serverless Functions reject request bodies over 4.5 MB, and
+ * a print-resolution portrait is comfortably larger than that (the symptom was
+ * a 413 on POST /api/staff/<id>/photo). The browser therefore sends the bytes
+ * to Cloudinary and sends this app only the resulting id plus the crop box.
+ * Uploads are still *signed* by /api/photos/sign, so only a logged-in admin
+ * can put anything in the account.
+ *
+ * Delivery is public (`type: "upload"`) by explicit product decision: photos
+ * are served as plain CDN URLs and are viewable by anyone holding the link,
+ * without signing in.
  *
  * Without Cloudinary credentials this falls back to the filesystem, which is
  * fine for local development.
@@ -27,6 +36,22 @@ export function usingCloudinary() {
         process.env.CLOUDINARY_API_KEY &&
         process.env.CLOUDINARY_API_SECRET),
   );
+}
+
+/** Credentials, from either the single-URL or split form. */
+export function cloudinaryCredentials() {
+  const url = process.env.CLOUDINARY_URL;
+  if (url) {
+    // cloudinary://<api_key>:<api_secret>@<cloud_name>
+    const m = /^cloudinary:\/\/([^:]+):([^@]+)@(.+)$/.exec(url.trim());
+    if (!m) throw new Error("CLOUDINARY_URL is malformed");
+    return { apiKey: m[1], apiSecret: m[2], cloudName: m[3] };
+  }
+  return {
+    apiKey: process.env.CLOUDINARY_API_KEY ?? "",
+    apiSecret: process.env.CLOUDINARY_API_SECRET ?? "",
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? "",
+  };
 }
 
 function localRoot() {
@@ -48,8 +73,20 @@ const FOLDER = process.env.CLOUDINARY_FOLDER ?? "nsc-id-photos";
  * carried separately as the asset's format, and leaving it in the id produces
  * a doubled extension on delivery.
  */
-function publicId(staffId: string, key: string) {
+export function publicId(staffId: string, key: string) {
   return `${FOLDER}/${staffId}/${key.replace(/\.[^.]+$/, "")}`;
+}
+
+/**
+ * Public CDN URL for a stored photo. `v=<version>` is deliberately omitted and
+ * cache invalidation is left to `invalidate: true` on upload, so callers can
+ * derive the URL without a database round-trip.
+ */
+export function photoUrl(staffId: string, key: string): string | null {
+  if (!usingCloudinary()) return null;
+  const { cloudName } = cloudinaryCredentials();
+  if (!cloudName) return null;
+  return `https://res.cloudinary.com/${cloudName}/image/upload/${publicId(staffId, key)}`;
 }
 
 async function cloudinaryClient() {
@@ -86,8 +123,7 @@ export async function putPhoto(
       {
         public_id: publicId(staffId, key),
         resource_type: "image",
-        // Private delivery — no guessable public URL for a staff ID photo.
-        type: "authenticated",
+        type: "upload",
         overwrite: true,
         invalidate: true,
       },
@@ -104,15 +140,15 @@ export async function getPhoto(staffId: string, key: string): Promise<Buffer> {
   }
 
   const cloudinary = await cloudinaryClient();
-  // Authenticated assets need a signed URL; a plain delivery URL returns 401.
   const url = cloudinary.url(publicId(staffId, key), {
     resource_type: "image",
-    type: "authenticated",
-    sign_url: true,
+    type: "upload",
     secure: true,
   });
 
-  const res = await fetch(url);
+  // Cloudinary serves a stale CDN copy for a short window after overwrite;
+  // re-cropping the previous original would silently produce a wrong preview.
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(
       `Cloudinary fetch failed for ${staffId}/${key}: ${res.status} ${res.statusText}`,

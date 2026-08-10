@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CardPreview } from "@/components/id-card/CardPreview";
 import { PhotoCropper } from "@/components/photo/PhotoCropper";
 import { useLoading } from "@/lib/loading-context";
+import { normalizePhoto } from "@/lib/photo/client-resize";
 import {
   BACK_TEMPLATES,
   FRONT_DEFAULT_BACK,
@@ -224,11 +225,21 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
     setMsg(`QR ${format.toUpperCase()} download started`);
   }
 
-  function onFile(file: File) {
-    setRawFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setCropSrc(String(reader.result));
-    reader.readAsDataURL(file);
+  async function onFile(file: File) {
+    // Downscale before cropping, never after: the crop box is in pixels of
+    // whatever image the user cropped, so resizing later would misalign it.
+    try {
+      const normalized = await normalizePhoto(file);
+      setRawFile(normalized.file);
+      setCropSrc(normalized.dataUrl);
+      if (normalized.resized) {
+        const from = (normalized.originalBytes / 1024 / 1024).toFixed(1);
+        const to = (normalized.file.size / 1024 / 1024).toFixed(1);
+        setMsg(`Photo resized for upload (${from}MB → ${to}MB); print quality is unaffected.`);
+      }
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Could not read that image");
+    }
   }
 
   async function saveCrop(area: Area, zoom: number) {
@@ -237,32 +248,85 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
     startLoading("Processing photo...", 10);
 
     try {
-      const fd = new FormData();
-      fd.append("file", rawFile);
-      fd.append(
-        "crop",
-        JSON.stringify({
-          x: area.x,
-          y: area.y,
-          width: area.width,
-          height: area.height,
-          zoom,
-        }),
-      );
+      const crop = {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: area.height,
+        zoom,
+      };
 
-      setProgress(40);
+      setProgress(10);
 
-      const res = await fetch(`/api/staff/${form.id}/photo`, {
+      // Ask for an upload signature. If Cloudinary is not configured (local
+      // dev) this 501s and we fall back to posting the file to our own API.
+      const signRes = await fetch(`/api/photos/sign`, {
         method: "POST",
-        body: fd,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staffId: form.id }),
       });
+
+      let res: Response;
+      if (signRes.ok) {
+        const sign = await signRes.json();
+
+        // The original goes browser -> Cloudinary directly. Routing it through
+        // our API would exceed Vercel's 4.5 MB body limit and return 413.
+        const cloud = new FormData();
+        cloud.append("file", rawFile);
+        cloud.append("api_key", sign.apiKey);
+        cloud.append("timestamp", String(sign.timestamp));
+        cloud.append("public_id", sign.publicId);
+        cloud.append("overwrite", "true");
+        cloud.append("invalidate", "true");
+        cloud.append("signature", sign.signature);
+
+        const upload = await fetch(sign.uploadUrl, {
+          method: "POST",
+          body: cloud,
+        });
+        if (!upload.ok) {
+          const detail = await upload.text();
+          stopLoading();
+          setMsg(`Upload to Cloudinary failed: ${detail.slice(0, 200)}`);
+          return;
+        }
+
+        setProgress(60);
+
+        // Only the crop box crosses our own API — a few hundred bytes.
+        res = await fetch(`/api/staff/${form.id}/photo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ crop, uploaded: true }),
+        });
+      } else {
+        const fd = new FormData();
+        fd.append("file", rawFile);
+        fd.append("crop", JSON.stringify(crop));
+        setProgress(40);
+        res = await fetch(`/api/staff/${form.id}/photo`, {
+          method: "POST",
+          body: fd,
+        });
+      }
 
       setProgress(80);
 
-      const data = await res.json();
+      // A 413 comes from the platform, not the app, so the body is HTML and
+      // res.json() would throw a misleading parse error instead of the cause.
+      if (res.status === 413) {
+        stopLoading();
+        setMsg(
+          "Photo too large for the server to accept. Cloudinary upload is not configured on this deployment.",
+        );
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}) as { error?: string });
       if (!res.ok) {
         stopLoading();
-        setMsg(data.error || "Photo save failed");
+        setMsg(data.error || `Photo save failed (${res.status})`);
         return;
       }
 
