@@ -216,37 +216,13 @@ export async function renderStaffCardPdf(staff: StaffCardInput) {
   };
   const photo = await embedPhoto(out, staff, photoFrame);
   if (photo) {
-    // Draw into the visible frame (true circle bbox / rounded square), not the taller 4:5 image box.
+    // Draw into the visible frame (true circle / rounded square), not the
+    // taller 4:5 image box. The template PDF already paints the #D3DCF1 halo
+    // and white photo hole — do not redraw a filled circle/rect here.
+    // pdf-lib's drawCircle `size` is a radius; a previous "diameter" value
+    // covered the crest and geometric background while leaving only the
+    // bottom waves visible, which is exactly the preview-vs-PDF mismatch.
     const box = topLeftToPdf(frontSlots.photoFrame);
-
-    // Photo halo #D3DCF1 (Canva ring) — drawn before photo so it sits behind
-    const haloPt = 3.5;
-    const haloColor = rgb(0xd3 / 255, 0xdc / 255, 0xf1 / 255);
-
-    if (frontSlots.photoMask === "circle") {
-      // Circular halo — draw filled circle behind the photo.
-      // pdf-lib's `size` is the RADIUS (it becomes xScale/yScale on an
-      // ellipse), not the diameter. Passing a diameter here drew a ring wider
-      // than the card itself.
-      const cx = box.x + box.width / 2;
-      const cy = box.y + box.height / 2;
-      frontPage.drawCircle({
-        x: cx,
-        y: cy,
-        size: box.width / 2 + haloPt,
-        color: haloColor,
-      });
-    } else {
-      // Rounded square halo — draw filled rectangle behind the photo
-      frontPage.drawRectangle({
-        x: box.x - haloPt,
-        y: box.y - haloPt,
-        width: box.width + haloPt * 2,
-        height: box.height + haloPt * 2,
-        color: haloColor,
-      });
-    }
-
     frontPage.drawImage(photo, {
       x: box.x,
       y: box.y,
