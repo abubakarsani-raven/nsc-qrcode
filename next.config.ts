@@ -2,12 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // Template PDFs are loaded at runtime via fs (`design/templates/.../${id}.pdf`),
-  // so the file tracer cannot see the paths. Without this, Vercel serverless
-  // bundles can omit the artwork and Download PDF diverges from the preview.
+  // Preview PNGs + Poppins are loaded at runtime via fs for the print raster
+  // path. Trace them so Vercel serverless bundles include the same assets the
+  // live CardPreview uses.
   outputFileTracingIncludes: {
     "/api/staff/export": [
-      "./design/templates/**/*",
+      "./public/id-card/templates/**/*",
       "./public/fonts/**/*",
     ],
   },

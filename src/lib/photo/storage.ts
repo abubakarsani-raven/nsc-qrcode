@@ -78,15 +78,21 @@ export function publicId(staffId: string, key: string) {
 }
 
 /**
- * Public CDN URL for a stored photo. `v=<version>` is deliberately omitted and
- * cache invalidation is left to `invalidate: true` on upload, so callers can
- * derive the URL without a database round-trip.
+ * Public CDN URL for a stored photo. Built via the Cloudinary SDK so the path
+ * includes the delivery prefix Cloudinary expects (bare `/image/upload/<id>`
+ * URLs 403 on this account).
  */
-export function photoUrl(staffId: string, key: string): string | null {
+export async function photoUrl(
+  staffId: string,
+  key: string,
+): Promise<string | null> {
   if (!usingCloudinary()) return null;
-  const { cloudName } = cloudinaryCredentials();
-  if (!cloudName) return null;
-  return `https://res.cloudinary.com/${cloudName}/image/upload/${publicId(staffId, key)}`;
+  const cloudinary = await cloudinaryClient();
+  return cloudinary.url(publicId(staffId, key), {
+    resource_type: "image",
+    type: "upload",
+    secure: true,
+  });
 }
 
 async function cloudinaryClient() {
@@ -167,5 +173,12 @@ export async function getPhoto(staffId: string, key: string): Promise<Buffer> {
     await new Promise((r) => setTimeout(r, 400 * (i + 1)));
   }
 
-  throw new Error(`Cloudinary fetch failed for ${staffId}/${key}: ${last}`);
+  // Local leftover from earlier uploads / seed data — common on localhost when
+  // CLOUDINARY_URL is set but this particular key was never pushed to the CDN.
+  // PDF still worked because it rebuilds from `original`+crop on Cloudinary.
+  try {
+    return await fs.readFile(localPath(staffId, key));
+  } catch {
+    throw new Error(`Cloudinary fetch failed for ${staffId}/${key}: ${last}`);
+  }
 }

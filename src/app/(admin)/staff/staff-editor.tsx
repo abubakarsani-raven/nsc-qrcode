@@ -67,13 +67,16 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   const [msg, setMsg] = useState("");
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [rawFile, setRawFile] = useState<File | null>(null);
+  // Bust browser cache after a re-crop — a prior 404/stale preview can stick
+  // even though Cache-Control says no-store on some Safari builds.
+  const [photoRev, setPhotoRev] = useState(0);
 
   const mismatch = nameColorMismatch(form.frontTemplate, form.backTemplate);
 
   const photoUrl = useMemo(() => {
     if (!form.id || !form.photoPreviewKey) return null;
-    return `/api/photos/${form.id}/${form.photoPreviewKey}`;
-  }, [form.id, form.photoPreviewKey]);
+    return `/api/photos/${form.id}/${form.photoPreviewKey}?r=${photoRev}`;
+  }, [form.id, form.photoPreviewKey, photoRev]);
 
   const parsedCrop = useMemo(() => {
     if (!form.photoCrop) return undefined;
@@ -334,6 +337,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       stopLoading();
 
       setForm((f) => ({ ...f, ...data.staff }));
+      setPhotoRev((n) => n + 1);
       setCropSrc(null);
       setRawFile(null);
       setMsg(`✓ Photo saved (${Math.round(data.dpi)} dpi)`);

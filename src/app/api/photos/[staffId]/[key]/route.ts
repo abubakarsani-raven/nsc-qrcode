@@ -1,14 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readPhotoFile } from "@/lib/photo/pipeline";
+import { readPhotoFile, writePreviewFromCrop, type CropParams } from "@/lib/photo/pipeline";
+import { getPhoto } from "@/lib/photo/storage";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type Ctx = { params: Promise<{ staffId: string; key: string }> };
 
+function isAllowedKey(key: string) {
+  return (
+    key === "preview.jpg" ||
+    key === "original.jpg" ||
+    key === "original.png" ||
+    key === "original.webp" ||
+    key.startsWith("original.")
+  );
+}
+
+async function loadOrRebuildPreview(staffId: string): Promise<Buffer> {
+  try {
+    return await getPhoto(staffId, "preview.jpg");
+  } catch {
+    // Preview is what the live card shows. PDF can rebuild from original+crop,
+    // so a missing preview asset left the browser broken while Download PDF
+    // still looked fine. Rebuild once and persist.
+    const staff = await prisma.staff.findUnique({
+      where: { id: staffId },
+      select: {
+        photoOriginalKey: true,
+        photoCrop: true,
+      },
+    });
+    if (!staff?.photoOriginalKey || !staff.photoCrop) throw new Error("no source");
+    let crop: CropParams;
+    try {
+      crop = JSON.parse(staff.photoCrop) as CropParams;
+    } catch {
+      throw new Error("bad crop");
+    }
+    const key = await writePreviewFromCrop(
+      staffId,
+      staff.photoOriginalKey,
+      crop,
+    );
+    return getPhoto(staffId, key);
+  }
+}
+
 export async function GET(req: NextRequest, ctx: Ctx) {
   const { staffId, key } = await ctx.params;
-  if (!["preview.jpg", "original.jpg", "original.png", "original.webp"].includes(key) &&
-      !key.startsWith("original.")) {
+  if (!isAllowedKey(key)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -27,7 +67,10 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   }
 
   try {
-    const buf = await readPhotoFile(staffId, key);
+    const buf =
+      key === "preview.jpg"
+        ? await loadOrRebuildPreview(staffId)
+        : await readPhotoFile(staffId, key);
     const type = key.endsWith(".png")
       ? "image/png"
       : key.endsWith(".webp")
@@ -39,7 +82,8 @@ export async function GET(req: NextRequest, ctx: Ctx) {
         "Cache-Control": "private, no-store",
       },
     });
-  } catch {
+  } catch (err) {
+    console.error(`[api/photos] failed ${staffId}/${key}:`, err);
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 }
