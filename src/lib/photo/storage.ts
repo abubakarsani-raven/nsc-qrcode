@@ -140,19 +140,32 @@ export async function getPhoto(staffId: string, key: string): Promise<Buffer> {
   }
 
   const cloudinary = await cloudinaryClient();
-  const url = cloudinary.url(publicId(staffId, key), {
+  const base = cloudinary.url(publicId(staffId, key), {
     resource_type: "image",
     type: "upload",
     secure: true,
   });
 
-  // Cloudinary serves a stale CDN copy for a short window after overwrite;
-  // re-cropping the previous original would silently produce a wrong preview.
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(
-      `Cloudinary fetch failed for ${staffId}/${key}: ${res.status} ${res.statusText}`,
-    );
+  // This runs immediately after the browser uploaded the original, which is
+  // exactly when the CDN is least reliable:
+  //   - a 404 cached from a fetch made *before* the upload can still be served
+  //   - a freshly written asset may not have propagated to every edge yet
+  //   - after an overwrite, the previous image can linger, and re-cropping the
+  //     wrong original would silently produce a wrong preview
+  // A unique query key sidesteps any cached entry, and a short retry covers
+  // genuine propagation lag rather than failing the user's upload.
+  const attempts = 4;
+  let last = "";
+  for (let i = 0; i < attempts; i++) {
+    const url = `${base}${base.includes("?") ? "&" : "?"}_cb=${Date.now()}-${i}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (res.ok) return Buffer.from(await res.arrayBuffer());
+
+    last = `${res.status} ${res.statusText}`;
+    // Only 404 is worth waiting on; anything else will not fix itself.
+    if (res.status !== 404 || i === attempts - 1) break;
+    await new Promise((r) => setTimeout(r, 400 * (i + 1)));
   }
-  return Buffer.from(await res.arrayBuffer());
+
+  throw new Error(`Cloudinary fetch failed for ${staffId}/${key}: ${last}`);
 }

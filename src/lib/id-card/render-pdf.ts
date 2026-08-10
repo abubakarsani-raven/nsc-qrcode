@@ -21,9 +21,11 @@ import { embedCardFonts } from "@/lib/id-card/fonts";
 import { publicVerifyUrl, assertUrlBudget } from "@/lib/qr";
 import { roundedQrPngBuffer } from "@/lib/qr-render-png";
 import {
+  maskPhotoToFrame,
   printCutBuffer,
   readPhotoFile,
   type CropParams,
+  type FrameMask,
 } from "@/lib/photo/pipeline";
 
 export type StaffCardInput = {
@@ -121,21 +123,22 @@ function drawMixedNameLine(
 async function embedPhoto(
   pdf: PDFDocument,
   staff: StaffCardInput,
+  frame: FrameMask,
 ): Promise<PDFImage | null> {
   try {
+    let source: Buffer | null = null;
     if (staff.photoOriginalKey && staff.photoCrop) {
       const crop = JSON.parse(staff.photoCrop) as CropParams;
-      const buf = await printCutBuffer(
-        staff.id,
-        staff.photoOriginalKey,
-        crop,
-      );
-      return pdf.embedJpg(buf);
+      source = await printCutBuffer(staff.id, staff.photoOriginalKey, crop);
+    } else if (staff.photoPreviewKey) {
+      source = await readPhotoFile(staff.id, staff.photoPreviewKey);
     }
-    if (staff.photoPreviewKey) {
-      const buf = await readPhotoFile(staff.id, staff.photoPreviewKey);
-      return pdf.embedJpg(buf);
-    }
+    if (!source) return null;
+
+    // Masked to the frame shape, so the printed card matches the preview
+    // instead of showing a bare rectangle. PNG carries the alpha channel.
+    const masked = await maskPhotoToFrame(source, frame);
+    return pdf.embedPng(masked);
   } catch (err) {
     // A missing photo must not abort the whole card, but silently dropping it
     // is how a blank portrait ships to print unnoticed — leave a trail.
@@ -205,7 +208,13 @@ export async function renderStaffCardPdf(staff: StaffCardInput) {
   const titleColor = rgb(0.15, 0.2, 0.25);
   const idColor = rgb(0.05, 0.2, 0.15);
 
-  const photo = await embedPhoto(out, staff);
+  const photoFrame: FrameMask = {
+    widthPt: frontSlots.photoFrame.w,
+    heightPt: frontSlots.photoFrame.h,
+    mask: frontSlots.photoMask,
+    radiusPt: frontSlots.photoRadiusPt,
+  };
+  const photo = await embedPhoto(out, staff, photoFrame);
   if (photo) {
     // Draw into the visible frame (true circle bbox / rounded square), not the taller 4:5 image box.
     const box = topLeftToPdf(frontSlots.photoFrame);
@@ -215,14 +224,16 @@ export async function renderStaffCardPdf(staff: StaffCardInput) {
     const haloColor = rgb(0xd3 / 255, 0xdc / 255, 0xf1 / 255);
 
     if (frontSlots.photoMask === "circle") {
-      // Circular halo — draw filled circle behind the photo
+      // Circular halo — draw filled circle behind the photo.
+      // pdf-lib's `size` is the RADIUS (it becomes xScale/yScale on an
+      // ellipse), not the diameter. Passing a diameter here drew a ring wider
+      // than the card itself.
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
-      const radius = (box.width + haloPt * 2) / 2; // outer radius
       frontPage.drawCircle({
         x: cx,
         y: cy,
-        size: radius * 2,
+        size: box.width / 2 + haloPt,
         color: haloColor,
       });
     } else {

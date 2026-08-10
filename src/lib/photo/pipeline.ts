@@ -92,6 +92,62 @@ export async function readPhotoFile(staffId: string, key: string) {
   return getPhoto(staffId, key);
 }
 
+export type FrameMask = {
+  widthPt: number;
+  heightPt: number;
+  mask: "circle" | "roundedSquare";
+  radiusPt?: number;
+};
+
+/**
+ * Cut a photo to the card's visible frame and punch the frame's shape into the
+ * alpha channel, returning a PNG.
+ *
+ * The on-screen preview gets its shape for free from CSS — `border-radius: 50%`
+ * plus `object-fit: cover` on a square box. A PDF has neither: `drawImage`
+ * paints the full rectangle, so an unmasked photo printed as a hard-edged
+ * rectangle sitting inside the halo, and a 4:5 image forced into a square frame
+ * came out stretched. Masking here is what makes print match preview.
+ *
+ * `fit: "cover"` with centre gravity mirrors `object-cover`'s default, so the
+ * same region of the photo survives in both renderings.
+ */
+export async function maskPhotoToFrame(
+  source: Buffer,
+  frame: FrameMask,
+): Promise<Buffer> {
+  const dpi = 600;
+  const w = Math.max(1, Math.round((frame.widthPt / 72) * dpi));
+  const h = Math.max(1, Math.round((frame.heightPt / 72) * dpi));
+
+  const base = await sharp(source)
+    .resize(w, h, {
+      fit: "cover",
+      position: "centre",
+      kernel: sharp.kernel.lanczos3,
+    })
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+
+  const shape =
+    frame.mask === "circle"
+      ? `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}" fill="#fff"/>`
+      : `<rect x="0" y="0" width="${w}" height="${h}" rx="${
+          ((frame.radiusPt ?? 6) / 72) * dpi
+        }" ry="${((frame.radiusPt ?? 6) / 72) * dpi}" fill="#fff"/>`;
+
+  const maskSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${shape}</svg>`,
+  );
+
+  // dest-in keeps the photo only where the mask is opaque.
+  return sharp(base)
+    .composite([{ input: maskSvg, blend: "dest-in" }])
+    .png()
+    .toBuffer();
+}
+
 /** Estimate final file size in KB based on DPI and crop dimensions */
 export function estimateFileSize(dpi: number, width: number, height: number): number {
   // Rough estimate: smaller DPI = smaller file
