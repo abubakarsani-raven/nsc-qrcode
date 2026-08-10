@@ -2,16 +2,40 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const STATUS_ITEMS = {
+  ALL: "All statuses",
+  ACTIVE: "Active",
+  SUSPENDED: "Suspended",
+} as const;
+
+const APPROVAL_ITEMS = {
+  ALL: "All approvals",
+  PENDING: "Pending",
+  APPROVED: "Approved",
+} as const;
 
 export function StaffFilters() {
   const router = useRouter();
   const sp = useSearchParams();
   const [q, setQ] = useState(sp.get("q") ?? "");
+  const status = (sp.get("status") as keyof typeof STATUS_ITEMS | null) ?? "ALL";
+  const approval =
+    (sp.get("approvalState") as keyof typeof APPROVAL_ITEMS | null) ?? "ALL";
 
   function apply(next: Record<string, string>) {
     const params = new URLSearchParams(sp.toString());
     Object.entries(next).forEach(([k, v]) => {
-      if (!v) params.delete(k);
+      if (!v || v === "ALL") params.delete(k);
       else params.set(k, v);
     });
     router.push(`/staff?${params.toString()}`);
@@ -19,51 +43,71 @@ export function StaffFilters() {
 
   return (
     <form
-      className="flex flex-wrap items-end gap-2 rounded-xl border border-neutral-200 bg-white p-3"
+      className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 bg-white p-3"
       onSubmit={(e) => {
         e.preventDefault();
         apply({ q });
       }}
     >
-      <label className="text-sm">
-        <span className="text-neutral-600">Search</span>
+      <div className="space-y-1.5">
+        <Label htmlFor="staff-search">Search</Label>
         <input
+          id="staff-search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="mt-1 block rounded-md border px-2 py-1.5"
+          className="block h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           placeholder="Name or ID"
         />
-      </label>
-      <label className="text-sm">
-        <span className="text-neutral-600">Status</span>
-        <select
-          className="mt-1 block rounded-md border px-2 py-1.5"
-          defaultValue={sp.get("status") ?? ""}
-          onChange={(e) => apply({ status: e.target.value })}
+      </div>
+      <div className="space-y-1.5">
+        <Label>Status</Label>
+        <Select
+          value={STATUS_ITEMS[status] ? status : "ALL"}
+          onValueChange={(value) => {
+            if (value != null) apply({ status: value });
+          }}
+          items={STATUS_ITEMS}
         >
-          <option value="">All</option>
-          <option value="ACTIVE">Active</option>
-          <option value="SUSPENDED">Suspended</option>
-        </select>
-      </label>
-      <label className="text-sm">
-        <span className="text-neutral-600">Approval</span>
-        <select
-          className="mt-1 block rounded-md border px-2 py-1.5"
-          defaultValue={sp.get("approvalState") ?? ""}
-          onChange={(e) => apply({ approvalState: e.target.value })}
+          <SelectTrigger className="min-w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(STATUS_ITEMS) as (keyof typeof STATUS_ITEMS)[]).map(
+              (id) => (
+                <SelectItem key={id} value={id}>
+                  {STATUS_ITEMS[id]}
+                </SelectItem>
+              ),
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Approval</Label>
+        <Select
+          value={APPROVAL_ITEMS[approval] ? approval : "ALL"}
+          onValueChange={(value) => {
+            if (value != null) apply({ approvalState: value });
+          }}
+          items={APPROVAL_ITEMS}
         >
-          <option value="">All</option>
-          <option value="PENDING">Pending</option>
-          <option value="APPROVED">Approved</option>
-        </select>
-      </label>
-      <button
-        type="submit"
-        className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white"
-      >
+          <SelectTrigger className="min-w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(
+              Object.keys(APPROVAL_ITEMS) as (keyof typeof APPROVAL_ITEMS)[]
+            ).map((id) => (
+              <SelectItem key={id} value={id}>
+                {APPROVAL_ITEMS[id]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Button type="submit" className="bg-[#0d4720] hover:bg-[#0a3318]">
         Apply
-      </button>
+      </Button>
     </form>
   );
 }

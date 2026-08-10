@@ -14,6 +14,18 @@ import {
   type BackTemplateId,
   type FrontTemplateId,
 } from "@/lib/id-card/slots.generated";
+import {
+  BACK_TEMPLATE_LABELS,
+  FRONT_TEMPLATE_LABELS,
+} from "@/lib/id-card/template-labels";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Area } from "react-easy-crop";
 
 type StaffData = {
@@ -419,36 +431,48 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="text-neutral-600">Front template</span>
-            <select
-              className="mt-1 w-full rounded-md border px-2 py-1.5"
+          <div className="space-y-1.5">
+            <Label htmlFor="front-template">Front template</Label>
+            <Select
               value={form.frontTemplate}
-              onChange={(e) => set("frontTemplate", e.target.value as FrontTemplateId)}
+              onValueChange={(value) => {
+                if (value != null) set("frontTemplate", value as FrontTemplateId);
+              }}
+              items={FRONT_TEMPLATE_LABELS}
             >
-              {Object.keys(FRONT_TEMPLATES).map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            <span className="text-neutral-600">
-              Back template
-            </span>
-            <select
-              className="mt-1 w-full rounded-md border px-2 py-1.5"
+              <SelectTrigger id="front-template" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(FRONT_TEMPLATES) as FrontTemplateId[]).map((id) => (
+                  <SelectItem key={id} value={id}>
+                    {FRONT_TEMPLATE_LABELS[id]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="back-template">Back template</Label>
+            <Select
               value={form.backTemplate}
-              onChange={(e) => set("backTemplate", e.target.value as BackTemplateId)}
+              onValueChange={(value) => {
+                if (value != null) set("backTemplate", value as BackTemplateId);
+              }}
+              items={BACK_TEMPLATE_LABELS}
             >
-              {Object.keys(BACK_TEMPLATES).map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-            </select>
-          </label>
+              <SelectTrigger id="back-template" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(BACK_TEMPLATES) as BackTemplateId[]).map((id) => (
+                  <SelectItem key={id} value={id}>
+                    {BACK_TEMPLATE_LABELS[id]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         {mismatch ? (
           <p className="text-sm text-amber-700">
