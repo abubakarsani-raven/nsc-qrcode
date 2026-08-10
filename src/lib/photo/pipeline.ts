@@ -1,11 +1,10 @@
-import fs from "fs/promises";
-import path from "path";
 import sharp from "sharp";
 import {
   PHOTO_DPI_FLOOR,
   PHOTO_MASTER,
   PHOTO_SLOT_INCHES,
 } from "@/lib/id-card/slots.generated";
+import { getPhoto, putPhoto } from "@/lib/photo/storage";
 
 export type CropParams = {
   x: number;
@@ -15,22 +14,6 @@ export type CropParams = {
   zoom?: number;
   rotation?: number;
 };
-
-function storageRoot() {
-  return path.resolve(
-    process.cwd(),
-    process.env.PHOTO_STORAGE_DIR ?? "./storage/photos",
-  );
-}
-
-export function photoPaths(staffId: string) {
-  const dir = path.join(storageRoot(), staffId);
-  return {
-    dir,
-    original: (ext: string) => path.join(dir, `original${ext}`),
-    preview: path.join(dir, "preview.jpg"),
-  };
-}
 
 export function minSourcePixels() {
   return {
@@ -52,11 +35,20 @@ export async function saveOriginal(
 ) {
   const ext =
     mime.includes("png") ? ".png" : mime.includes("webp") ? ".webp" : ".jpg";
-  const paths = photoPaths(staffId);
-  await fs.mkdir(paths.dir, { recursive: true });
   const key = `original${ext}`;
-  await fs.writeFile(path.join(paths.dir, key), buffer);
+  await putPhoto(staffId, key, buffer);
   return key;
+}
+
+/** Shared crop/rotate stage — the source is always bytes, never a path. */
+function cropped(source: Buffer, crop: CropParams, sharpen: boolean) {
+  const pipeline = sharp(source).rotate(crop.rotation ?? 0).extract({
+    left: Math.max(0, Math.round(crop.x)),
+    top: Math.max(0, Math.round(crop.y)),
+    width: Math.max(1, Math.round(crop.width)),
+    height: Math.max(1, Math.round(crop.height)),
+  });
+  return sharpen ? pipeline.sharpen() : pipeline;
 }
 
 export async function writePreviewFromCrop(
@@ -65,26 +57,18 @@ export async function writePreviewFromCrop(
   crop: CropParams,
   sharpen = false,
 ) {
-  const paths = photoPaths(staffId);
-  const src = path.join(paths.dir, originalKey);
-  const pipeline = sharp(src).rotate(crop.rotation ?? 0).extract({
-    left: Math.max(0, Math.round(crop.x)),
-    top: Math.max(0, Math.round(crop.y)),
-    width: Math.max(1, Math.round(crop.width)),
-    height: Math.max(1, Math.round(crop.height)),
-  });
-
-  if (sharpen) pipeline.sharpen();
-
-  await pipeline
+  const source = await getPhoto(staffId, originalKey);
+  const preview = await cropped(source, crop, sharpen)
     .resize(PHOTO_MASTER.width, PHOTO_MASTER.height, {
       fit: "fill",
       kernel: sharp.kernel.lanczos3,
     })
     .jpeg({ quality: 92 })
-    .toFile(paths.preview);
+    .toBuffer();
 
-  return "preview.jpg";
+  const key = "preview.jpg";
+  await putPhoto(staffId, key, preview);
+  return key;
 }
 
 /** Re-cut for print at native slot density × 2 (≈600 dpi equivalent) */
@@ -94,28 +78,18 @@ export async function printCutBuffer(
   crop: CropParams,
   sharpen = false,
 ) {
-  const paths = photoPaths(staffId);
-  const src = path.join(paths.dir, originalKey);
+  const source = await getPhoto(staffId, originalKey);
   const targetW = Math.round(PHOTO_SLOT_INCHES.width * 600);
   const targetH = Math.round(PHOTO_SLOT_INCHES.height * 600);
 
-  let pipeline = sharp(src).rotate(crop.rotation ?? 0).extract({
-    left: Math.max(0, Math.round(crop.x)),
-    top: Math.max(0, Math.round(crop.y)),
-    width: Math.max(1, Math.round(crop.width)),
-    height: Math.max(1, Math.round(crop.height)),
-  });
-
-  if (sharpen) pipeline = pipeline.sharpen();
-
-  return pipeline
+  return cropped(source, crop, sharpen)
     .resize(targetW, targetH, { fit: "fill", kernel: sharp.kernel.lanczos3 })
     .jpeg({ quality: 95 })
     .toBuffer();
 }
 
 export async function readPhotoFile(staffId: string, key: string) {
-  return fs.readFile(path.join(photoPaths(staffId).dir, key));
+  return getPhoto(staffId, key);
 }
 
 /** Estimate final file size in KB based on DPI and crop dimensions */

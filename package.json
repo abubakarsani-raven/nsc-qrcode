@@ -28,6 +28,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "bwip-js": "^4.11.2",
+    "cloudinary": "^2.10.0",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "fontkit": "^2.0.4",

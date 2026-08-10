@@ -20,7 +20,11 @@ import { layoutName } from "@/lib/id-card/name-layout";
 import { embedCardFonts } from "@/lib/id-card/fonts";
 import { publicVerifyUrl, assertUrlBudget } from "@/lib/qr";
 import { roundedQrPngBuffer } from "@/lib/qr-render-png";
-import { printCutBuffer, type CropParams } from "@/lib/photo/pipeline";
+import {
+  printCutBuffer,
+  readPhotoFile,
+  type CropParams,
+} from "@/lib/photo/pipeline";
 
 export type StaffCardInput = {
   id: string;
@@ -129,16 +133,13 @@ async function embedPhoto(
       return pdf.embedJpg(buf);
     }
     if (staff.photoPreviewKey) {
-      const previewPath = path.join(
-        process.cwd(),
-        process.env.PHOTO_STORAGE_DIR ?? "./storage/photos",
-        staff.id,
-        staff.photoPreviewKey,
-      );
-      const buf = await fs.readFile(previewPath);
+      const buf = await readPhotoFile(staff.id, staff.photoPreviewKey);
       return pdf.embedJpg(buf);
     }
-  } catch {
+  } catch (err) {
+    // A missing photo must not abort the whole card, but silently dropping it
+    // is how a blank portrait ships to print unnoticed — leave a trail.
+    console.error(`[render-pdf] photo embed failed for staff ${staff.id}:`, err);
     return null;
   }
   return null;
