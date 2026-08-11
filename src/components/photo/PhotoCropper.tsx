@@ -130,7 +130,9 @@ export function PhotoCropper({
         className="flex max-h-[min(92vh,880px)] w-full max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
       >
         <DialogHeader className="border-b px-4 py-3 sm:px-5">
-          <DialogTitle className="text-[#0d4720]">Position staff photo</DialogTitle>
+          <DialogTitle className="tracking-tight text-[var(--nsc-ink)]">
+            Position staff photo
+          </DialogTitle>
           <DialogDescription>
             Drag to frame the face. Eyes should sit near the guide line
             (~{Math.round(FACE_FRAMING.eyeLineFromTop * 100)}% from top). Mask:{" "}
@@ -274,7 +276,9 @@ export function PhotoCropper({
 
           <aside className="flex flex-col gap-3 border-t bg-muted/40 p-4 md:border-t-0 md:border-l">
             <div>
-              <p className="text-sm font-medium text-[#0d4720]">Card preview</p>
+              <p className="text-sm font-medium text-[var(--nsc-ink)]">
+                Card preview
+              </p>
               <p className="text-xs text-muted-foreground">
                 {(PHOTO_SLOT_INCHES.width * 2.54).toFixed(1)} ×{" "}
                 {(PHOTO_SLOT_INCHES.height * 2.54).toFixed(1)} cm · 4:5
@@ -346,7 +350,7 @@ export function PhotoCropper({
             <DialogFooter className="mt-auto flex-col gap-2 sm:flex-col">
               <Button
                 type="button"
-                className="w-full bg-[#0d4720] hover:bg-[#0a3318]"
+                className="w-full bg-[var(--nsc-green)] hover:bg-[var(--nsc-green-hover)]"
                 disabled={!canSave}
                 onClick={handleSave}
               >

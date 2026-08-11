@@ -1,6 +1,6 @@
-import { ReactNode } from 'react';
+import { ReactNode } from "react";
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info';
+type BadgeVariant = "default" | "success" | "warning" | "error" | "info";
 
 type BadgeProps = {
   children: ReactNode;
@@ -9,19 +9,23 @@ type BadgeProps = {
 };
 
 const variantStyles: Record<BadgeVariant, string> = {
-  default: 'bg-neutral-100 text-neutral-700',
-  success: 'bg-emerald-100 text-emerald-700',
-  warning: 'bg-amber-100 text-amber-700',
-  error: 'bg-red-100 text-red-700',
-  info: 'bg-blue-100 text-blue-700',
+  default: "bg-[#f0f0f2] text-[var(--nsc-ink)]",
+  success: "bg-[#e8f8ee] text-[#0d4720]",
+  warning: "bg-[#fff4e5] text-[#9a5b00]",
+  error: "bg-[#ffeceb] text-[#c41e16]",
+  info: "bg-[#e8f1ff] text-[#0040dd]",
 };
 
-export function Badge({ children, variant = 'default', className = '' }: BadgeProps) {
+export function Badge({
+  children,
+  variant = "default",
+  className = "",
+}: BadgeProps) {
   return (
     <span
       className={`
-        inline-flex items-center px-2.5 py-0.5
-        rounded-full text-xs font-medium
+        inline-flex items-center rounded-full px-2 py-0.5
+        text-[11px] font-semibold tracking-[0.01em]
         ${variantStyles[variant]}
         ${className}
       `}

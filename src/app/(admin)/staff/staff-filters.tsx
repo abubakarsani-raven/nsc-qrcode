@@ -43,19 +43,19 @@ export function StaffFilters() {
 
   return (
     <form
-      className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 bg-white p-3"
+      className="nsc-surface flex flex-wrap items-end gap-3 p-4"
       onSubmit={(e) => {
         e.preventDefault();
         apply({ q });
       }}
     >
-      <div className="space-y-1.5">
+      <div className="min-w-[180px] flex-1 space-y-1.5">
         <Label htmlFor="staff-search">Search</Label>
         <input
           id="staff-search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="block h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="nsc-field"
           placeholder="Name or ID"
         />
       </div>
@@ -105,7 +105,11 @@ export function StaffFilters() {
           </SelectContent>
         </Select>
       </div>
-      <Button type="submit" className="bg-[#0d4720] hover:bg-[#0a3318]">
+      <Button
+        type="submit"
+        variant="secondary"
+        className="h-10 rounded-full px-5"
+      >
         Apply
       </Button>
     </form>

@@ -31,20 +31,20 @@ export default async function StaffDetailPage({ params }: Ctx) {
   const diffs = draftVsPublishedDiff(staff, staff.published);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-[#0d4720]">
+        <h1 className="nsc-page-title">
           {staff.lastName} {staff.firstName}
         </h1>
-        <p className="text-sm text-neutral-600">
+        <p className="nsc-page-sub">
           {staff.designation} · {staff.idNumber}
         </p>
       </div>
 
       {diffs && diffs.length > 0 ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-          <p className="font-medium text-amber-900">Draft vs published</p>
-          <ul className="mt-2 space-y-1 text-amber-900/90">
+        <div className="rounded-2xl border border-[#ffd60a]/40 bg-[#fff9e6] p-4 text-[13px]">
+          <p className="font-semibold text-[#9a5b00]">Draft vs published</p>
+          <ul className="mt-2 space-y-1 text-[#9a5b00]/90">
             {diffs.map((d) => (
               <li key={d.field}>
                 <span className="font-medium">{d.field}:</span> {d.published || "—"} →{" "}
@@ -86,21 +86,26 @@ export default async function StaffDetailPage({ params }: Ctx) {
         }}
       />
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-4">
-        <h2 className="mb-2 font-medium text-[#0d4720]">Audit log</h2>
-        <ul className="space-y-1 text-sm text-neutral-700">
+      <section className="nsc-surface p-5">
+        <h2 className="text-[15px] font-semibold tracking-tight text-[var(--nsc-ink)]">
+          Audit log
+        </h2>
+        <ul className="mt-3 space-y-0 text-[13px]">
           {staff.auditEvents.map((e) => (
-            <li key={e.id} className="flex justify-between gap-3 border-t border-neutral-100 py-1.5">
+            <li
+              key={e.id}
+              className="flex justify-between gap-3 border-t border-[var(--nsc-separator)] py-2.5 first:border-0 first:pt-0"
+            >
               <span>
                 {e.type} · {e.actor.name}
               </span>
-              <span className="text-neutral-500">
+              <span className="text-[var(--nsc-secondary)]">
                 {e.createdAt.toLocaleString()}
               </span>
             </li>
           ))}
           {staff.auditEvents.length === 0 ? (
-            <li className="text-neutral-500">No events yet</li>
+            <li className="text-[var(--nsc-secondary)]">No events yet</li>
           ) : null}
         </ul>
       </section>

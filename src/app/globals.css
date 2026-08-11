@@ -1,9 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-/*
- ---break---
- */
+
 @custom-variant dark (&:is(.dark *));
 
 @font-face {
@@ -23,55 +21,58 @@
 }
 
 /*
- * The admin UI is a light-only design — every surface (cards, inputs, tables)
- * is a hardcoded light colour. There is deliberately no dark-mode override
- * here: one used to flip --foreground to #ededed, which rendered near-white
- * text inside white inputs and made the whole portal unreadable for anyone
- * whose OS was set to dark. Keep this palette fixed unless a real dark theme
- * is built for the components themselves.
+ * Light-only Apple-inspired admin shell for NSC Staff ID.
+ * ID-card/PDF typography stays on Poppins; the product UI uses the system stack.
  */
 :root {
   color-scheme: light;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  /* NSC green #0d4720 */
-  --primary: oklch(0.32 0.08 150);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --nsc-canvas: #f5f5f7;
+  --nsc-ink: #1d1d1f;
+  --nsc-secondary: #86868b;
+  --nsc-separator: rgba(60, 60, 67, 0.12);
+  --nsc-fill: rgba(120, 120, 128, 0.12);
+  --nsc-green: #0d4720;
+  --nsc-green-hover: #0a3318;
+
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --card: #ffffff;
+  --card-foreground: #1d1d1f;
+  --popover: #ffffff;
+  --popover-foreground: #1d1d1f;
+  --primary: #0d4720;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f2;
+  --secondary-foreground: #1d1d1f;
+  --muted: #f0f0f2;
+  --muted-foreground: #86868b;
+  --accent: #eef5f0;
+  --accent-foreground: #0d4720;
+  --destructive: #ff3b30;
+  --border: rgba(60, 60, 67, 0.12);
+  --input: rgba(60, 60, 67, 0.18);
+  --ring: #0d4720;
+  --radius: 0.75rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1d1d1f;
+  --sidebar-primary: #0d4720;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef5f0;
+  --sidebar-accent-foreground: #0d4720;
+  --sidebar-border: rgba(60, 60, 67, 0.12);
+  --sidebar-ring: #0d4720;
+  --chart-1: #0d4720;
+  --chart-2: #86868b;
+  --chart-3: #34c759;
+  --chart-4: #ff9f0a;
+  --chart-5: #007aff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -107,70 +108,115 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Form controls must never inherit an ambiguous colour — state their own. */
-input,
-select,
-textarea {
-  color: #171717;
-  background-color: #ffffff;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: #737373;
-  opacity: 1;
-}
-/*
- ---break---
- */
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-/*
- ---break---
- */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    @apply font-sans antialiased;
+  }
+
   body {
     @apply bg-background text-foreground;
+    font-family:
+      -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: -0.01em;
   }
-  html {
-    @apply font-sans;
+
+  /* Light-only form controls — never inherit OS dark text into white fields */
+  input,
+  select,
+  textarea {
+    color: var(--nsc-ink);
+    background-color: #ffffff;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--nsc-secondary);
+    opacity: 1;
+  }
+}
+
+/* Product primitives */
+@layer components {
+  .nsc-page-title {
+    font-size: 1.75rem;
+    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--nsc-ink);
+  }
+
+  .nsc-page-sub {
+    margin-top: 0.25rem;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    color: var(--nsc-secondary);
+  }
+
+  .nsc-section-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--nsc-secondary);
+  }
+
+  .nsc-surface {
+    background: #ffffff;
+    border: 1px solid var(--nsc-separator);
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .nsc-field {
+    margin-top: 0.375rem;
+    width: 100%;
+    border-radius: 0.625rem;
+    border: 1px solid var(--nsc-separator);
+    background: #ffffff;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.9375rem;
+    color: var(--nsc-ink);
+    outline: none;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .nsc-field:focus {
+    border-color: color-mix(in srgb, var(--nsc-green) 55%, white);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--nsc-green) 18%, transparent);
+  }
+
+  .nsc-nav-link {
+    border-radius: 999px;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--nsc-secondary);
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .nsc-nav-link:hover {
+    background: var(--nsc-fill);
+    color: var(--nsc-ink);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

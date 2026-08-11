@@ -3,6 +3,8 @@
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 export function LoginForm() {
   const router = useRouter();
@@ -31,35 +33,43 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <label className="block text-sm">
-        <span className="text-neutral-700">Email</span>
+    <form onSubmit={onSubmit} className="space-y-5">
+      <div className="space-y-1.5">
+        <Label htmlFor="email">Email</Label>
         <input
+          id="email"
           type="email"
           required
+          autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2"
+          className="nsc-field"
         />
-      </label>
-      <label className="block text-sm">
-        <span className="text-neutral-700">Password</span>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="password">Password</Label>
         <input
+          id="password"
           type="password"
           required
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2"
+          className="nsc-field"
         />
-      </label>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <button
+      </div>
+      {error ? (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          {error}
+        </p>
+      ) : null}
+      <Button
         type="submit"
         disabled={loading}
-        className="w-full rounded-md bg-[#0d4720] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+        className="h-11 w-full rounded-xl bg-[var(--nsc-green)] text-[15px] hover:bg-[var(--nsc-green-hover)]"
       >
         {loading ? "Signing in…" : "Sign in"}
-      </button>
+      </Button>
     </form>
   );
 }

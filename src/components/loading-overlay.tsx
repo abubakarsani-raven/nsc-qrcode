@@ -43,35 +43,32 @@ export function LoadingOverlay() {
   const overdue = remaining !== null && remaining <= 0;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-2xl mx-4 sm:mx-0">
-        {/* Spinner */}
-        <div className="flex justify-center mb-4">
-          <div className="relative h-16 w-16">
-            <div className="absolute inset-0 rounded-full border-4 border-neutral-200" />
-            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#0d4720] animate-spin" />
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/25 backdrop-blur-md">
+      <div className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--nsc-separator)] bg-white/95 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.18)] sm:mx-0">
+        <div className="mb-4 flex justify-center">
+          <div className="relative h-12 w-12">
+            <div className="absolute inset-0 rounded-full border-[3px] border-[var(--nsc-fill)]" />
+            <div className="absolute inset-0 animate-spin rounded-full border-[3px] border-transparent border-t-[var(--nsc-green)]" />
           </div>
         </div>
 
-        {/* Message */}
-        <h3 className="text-center text-lg font-semibold text-neutral-900 mb-2">
+        <h3 className="mb-2 text-center text-[17px] font-semibold tracking-tight text-[var(--nsc-ink)]">
           {message}
         </h3>
 
-        {/* Progress Bar */}
         <div className="mb-4">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--nsc-fill)]">
             <div
-              className="h-full bg-gradient-to-r from-[#0d4720] to-emerald-500 transition-[width] duration-200 ease-out"
+              className="h-full rounded-full bg-[var(--nsc-green)] transition-[width] duration-200 ease-out"
               style={{ width: `${displayProgress}%` }}
             />
           </div>
-          <div className="mt-2 flex items-center justify-between text-xs text-neutral-700">
-            <span className="font-mono tabular-nums">{displayProgress}%</span>
-            <div className="flex gap-4 tabular-nums">
+          <div className="mt-2 flex items-center justify-between text-[12px] text-[var(--nsc-secondary)]">
+            <span className="tabular-nums">{displayProgress}%</span>
+            <div className="flex gap-3 tabular-nums">
               <span>{formatSeconds(elapsed)} elapsed</span>
               {remaining !== null && !overdue && (
-                <span className="font-medium text-emerald-700">
+                <span className="font-medium text-[var(--nsc-ink)]">
                   ~{formatSeconds(remaining)} left
                 </span>
               )}
@@ -79,13 +76,12 @@ export function LoadingOverlay() {
           </div>
         </div>
 
-        {/* Status Text */}
-        <p className="text-center text-sm text-neutral-700">
+        <p className="text-center text-[13px] text-[var(--nsc-secondary)]">
           {progress === 100
-            ? 'Finalizing…'
+            ? "Finalizing…"
             : overdue
-              ? 'Taking longer than expected — still working…'
-              : 'Please wait while we process your request'}
+              ? "Taking longer than expected — still working…"
+              : "Please wait while we process your request"}
         </p>
       </div>
     </div>

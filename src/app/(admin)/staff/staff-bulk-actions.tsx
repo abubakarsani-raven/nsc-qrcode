@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export function StaffBulkActions({
   staff,
@@ -40,30 +41,43 @@ export function StaffBulkActions({
   if (!staff.length) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="text-neutral-600">Export filtered ({staff.length}):</span>
-      <button
+    <div className="flex flex-wrap items-center gap-2 text-[13px]">
+      <span className="text-[var(--nsc-secondary)]">
+        Export filtered ({staff.length})
+      </span>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
         disabled={busy}
         onClick={() => exportMode("batch")}
-        className="rounded-md border px-2 py-1 hover:bg-white"
+        className="rounded-full"
       >
         Batch PDF
-      </button>
-      <button
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
         disabled={busy}
         onClick={() => exportMode("impose-a4")}
-        className="rounded-md border px-2 py-1 hover:bg-white"
+        className="rounded-full"
       >
         Impose A4
-      </button>
-      <button
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
         disabled={busy}
         onClick={() => exportMode("impose-a3")}
-        className="rounded-md border px-2 py-1 hover:bg-white"
+        className="rounded-full"
       >
         Impose A3
-      </button>
-      {msg ? <span className="text-neutral-500">{msg}</span> : null}
+      </Button>
+      {msg ? (
+        <span className="text-[var(--nsc-secondary)]">{msg}</span>
+      ) : null}
     </div>
   );
 }

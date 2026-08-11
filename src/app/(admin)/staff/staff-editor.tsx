@@ -376,14 +376,16 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
 
   return (
     <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="order-2 space-y-4 rounded-xl border border-neutral-200 bg-white p-4 md:order-1">
+      <div className="order-2 space-y-5 nsc-surface p-5 md:order-1 md:p-6">
         <div>
-          <h2 className="text-base font-semibold text-[#0d4720]">Edit staff details</h2>
-          <p className="text-sm text-neutral-600">
-            Changes update the live ID card preview as you type. Click Save when ready.
+          <h2 className="text-[17px] font-semibold tracking-tight text-[var(--nsc-ink)]">
+            Staff details
+          </h2>
+          <p className="mt-1 text-[13px] text-[var(--nsc-secondary)]">
+            Edits update the live card preview. Save when ready.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           {(
             [
               ["idNumber", "ID number"],
@@ -399,10 +401,10 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               ["emergencyContactPhone", "Emergency phone"],
             ] as const
           ).map(([key, label]) => (
-            <label key={key} className="text-sm">
-              <span className="text-neutral-600">{label}</span>
+            <label key={key} className="text-[13px]">
+              <span className="text-[var(--nsc-secondary)]">{label}</span>
               <input
-                className="mt-1 w-full rounded-md border px-2 py-1.5"
+                className="nsc-field"
                 value={(form[key] as string) ?? ""}
                 onChange={(e) => set(key, e.target.value)}
               />
@@ -410,18 +412,18 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
           ))}
           {form.canMedical !== false && (
             <>
-              <label className="text-sm">
-                <span className="text-neutral-600">Blood group (admin only)</span>
+              <label className="text-[13px]">
+                <span className="text-[var(--nsc-secondary)]">Blood group (admin only)</span>
                 <input
-                  className="mt-1 w-full rounded-md border px-2 py-1.5"
+                  className="nsc-field"
                   value={form.bloodGroup ?? ""}
                   onChange={(e) => set("bloodGroup", e.target.value)}
                 />
               </label>
-              <label className="text-sm">
-                <span className="text-neutral-600">Genotype (admin only)</span>
+              <label className="text-[13px]">
+                <span className="text-[var(--nsc-secondary)]">Genotype (admin only)</span>
                 <input
-                  className="mt-1 w-full rounded-md border px-2 py-1.5"
+                  className="nsc-field"
                   value={form.genotype ?? ""}
                   onChange={(e) => set("genotype", e.target.value)}
                 />
@@ -482,13 +484,13 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
 
         {form.id ? (
           <div className="space-y-2">
-            <label className="block text-sm">
-              <span className="text-neutral-600">Photo (camera or file)</span>
+            <label className="block text-[13px]">
+              <span className="text-[var(--nsc-secondary)]">Photo (camera or file)</span>
               <input
                 type="file"
                 accept="image/*"
                 capture="environment"
-                className="mt-1 block w-full text-sm"
+                className="mt-1.5 block w-full text-[13px] text-[var(--nsc-secondary)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--nsc-fill)] file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-[var(--nsc-ink)]"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) onFile(f);
@@ -499,33 +501,35 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               <button
                 type="button"
                 onClick={editPositioning}
-                className="text-sm text-blue-600 hover:underline"
+                className="text-[13px] font-medium text-[var(--nsc-green)] hover:underline"
               >
-                Edit positioning (reopen cropper)
+                Edit positioning
               </button>
             )}
           </div>
         ) : (
-          <p className="text-sm text-neutral-500">Save the record before capturing a photo.</p>
+          <p className="text-[13px] text-[var(--nsc-secondary)]">
+            Save the record before capturing a photo.
+          </p>
         )}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 border-t border-[var(--nsc-separator)] pt-4">
           {form.id ? (
             <button
               type="button"
               onClick={() => {
-                const qrUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/v/${form.qrToken}`;
-                window.open(qrUrl, '_blank');
+                const qrUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/v/${form.qrToken}`;
+                window.open(qrUrl, "_blank");
               }}
-              className="rounded-md border border-blue-300 px-3 py-2 text-sm text-blue-700"
+              className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium text-[var(--nsc-ink)] hover:bg-[#fafafa]"
             >
-              Preview QR Page
+              Preview QR page
             </button>
           ) : null}
           <button
             type="button"
             onClick={save}
-            className="rounded-md bg-[#0d4720] px-3 py-2 text-sm text-white"
+            className="rounded-full bg-[var(--nsc-green)] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-[var(--nsc-green-hover)]"
           >
             Save
           </button>
@@ -533,7 +537,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
             <button
               type="button"
               onClick={approve}
-              className="rounded-md border border-[#0d4720] px-3 py-2 text-sm text-[#0d4720]"
+              className="rounded-full border border-[var(--nsc-green)] px-3.5 py-2 text-[13px] font-medium text-[var(--nsc-green)] hover:bg-[var(--accent)]"
             >
               Approve / publish
             </button>
@@ -542,7 +546,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
             <button
               type="button"
               onClick={printOne}
-              className="rounded-md border px-3 py-2 text-sm"
+              className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
             >
               Download PDF
             </button>
@@ -552,16 +556,16 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               <button
                 type="button"
                 onClick={() => downloadQr("png")}
-                className="rounded-md border px-3 py-2 text-sm"
+                className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
               >
-                Download QR (PNG)
+                QR PNG
               </button>
               <button
                 type="button"
                 onClick={() => downloadQr("svg")}
-                className="rounded-md border px-3 py-2 text-sm"
+                className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
               >
-                Download QR (SVG)
+                QR SVG
               </button>
             </>
           ) : null}
@@ -571,7 +575,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               onClick={() =>
                 setStatus(form.status === "SUSPENDED" ? "ACTIVE" : "SUSPENDED")
               }
-              className="rounded-md border border-red-300 px-3 py-2 text-sm text-red-700"
+              className="rounded-full border border-red-200 bg-white px-3.5 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50"
             >
               {form.status === "SUSPENDED" ? "Reactivate" : "Suspend"}
             </button>
@@ -580,46 +584,60 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
             <button
               type="button"
               onClick={regenerateQr}
-              className="rounded-md border px-3 py-2 text-sm"
+              className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
             >
               Regenerate QR
               {form.lastPrintedAt ? " (was printed)" : ""}
             </button>
           ) : null}
         </div>
-        {msg ? <p className="text-sm text-neutral-600">{msg}</p> : null}
+        {msg ? (
+          <p className="text-[13px] text-[var(--nsc-secondary)]">{msg}</p>
+        ) : null}
         {form.hasPendingEdits ? (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="rounded-xl bg-[#fff4e5] px-3 py-2 text-[13px] text-[#9a5b00]">
             Changes awaiting approval — printing blocked until published.
           </p>
         ) : null}
       </div>
 
-      <aside className="order-1 space-y-3 md:sticky md:top-4 md:order-2">
-        <div className="rounded-xl border border-[#0d4720]/20 bg-white p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between gap-2">
+      <aside className="order-1 space-y-3 md:sticky md:top-20 md:order-2">
+        <div className="nsc-surface p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold text-[#0d4720]">Live ID card</h2>
-              <p className="text-xs text-neutral-500">Updates as you edit</p>
+              <h2 className="text-[15px] font-semibold tracking-tight text-[var(--nsc-ink)]">
+                Live ID card
+              </h2>
+              <p className="text-[12px] text-[var(--nsc-secondary)]">
+                Updates as you edit
+              </p>
             </div>
-            <div className="flex gap-1">
+            <div className="flex rounded-full bg-[var(--nsc-fill)] p-0.5">
               <button
                 type="button"
                 onClick={() => setSide("front")}
-                className={`rounded-md px-2 py-1 text-xs ${side === "front" ? "bg-[#0d4720] text-white" : "border"}`}
+                className={`rounded-full px-3 py-1 text-[12px] font-medium transition-colors ${
+                  side === "front"
+                    ? "bg-white text-[var(--nsc-ink)] shadow-sm"
+                    : "text-[var(--nsc-secondary)]"
+                }`}
               >
                 Front
               </button>
               <button
                 type="button"
                 onClick={() => setSide("back")}
-                className={`rounded-md px-2 py-1 text-xs ${side === "back" ? "bg-[#0d4720] text-white" : "border"}`}
+                className={`rounded-full px-3 py-1 text-[12px] font-medium transition-colors ${
+                  side === "back"
+                    ? "bg-white text-[var(--nsc-ink)] shadow-sm"
+                    : "text-[var(--nsc-secondary)]"
+                }`}
               >
                 Back
               </button>
             </div>
           </div>
-          <div className="flex max-h-[70vh] justify-center overflow-auto rounded-lg bg-neutral-100 p-3">
+          <div className="flex max-h-[70vh] justify-center overflow-auto rounded-xl bg-[#f5f5f7] p-4">
             <CardPreview
               side={side}
               frontTemplate={form.frontTemplate}
@@ -634,24 +652,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               scale={1.9}
             />
           </div>
-          {form.id ? (
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => downloadQr("png")}
-                className="rounded border px-2 py-1 text-neutral-700 hover:bg-neutral-50"
-              >
-                QR PNG
-              </button>
-              <button
-                type="button"
-                onClick={() => downloadQr("svg")}
-                className="rounded border px-2 py-1 text-neutral-700 hover:bg-neutral-50"
-              >
-                QR SVG
-              </button>
-            </div>
-          ) : null}
         </div>
       </aside>
 

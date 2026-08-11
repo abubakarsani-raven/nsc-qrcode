@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode } from "react";
 
 type CardProps = {
   children: ReactNode;
@@ -7,14 +7,18 @@ type CardProps = {
   hoverable?: boolean;
 };
 
-export function Card({ children, className = '', onClick, hoverable = false }: CardProps) {
+export function Card({
+  children,
+  className = "",
+  onClick,
+  hoverable = false,
+}: CardProps) {
   return (
     <div
       onClick={onClick}
       className={`
-        rounded-lg bg-white border border-neutral-200
-        shadow-sm hover:shadow-md transition-shadow duration-150
-        ${hoverable ? 'cursor-pointer hover:border-neutral-300' : ''}
+        nsc-surface
+        ${hoverable ? "cursor-pointer transition-transform hover:-translate-y-0.5" : ""}
         ${className}
       `}
     >
@@ -28,9 +32,11 @@ type CardHeaderProps = {
   className?: string;
 };
 
-export function CardHeader({ children, className = '' }: CardHeaderProps) {
+export function CardHeader({ children, className = "" }: CardHeaderProps) {
   return (
-    <div className={`px-6 py-4 border-b border-neutral-200 ${className}`}>
+    <div
+      className={`border-b border-[var(--nsc-separator)] px-5 py-4 ${className}`}
+    >
       {children}
     </div>
   );
@@ -41,8 +47,8 @@ type CardBodyProps = {
   className?: string;
 };
 
-export function CardBody({ children, className = '' }: CardBodyProps) {
-  return <div className={`px-6 py-4 ${className}`}>{children}</div>;
+export function CardBody({ children, className = "" }: CardBodyProps) {
+  return <div className={`px-5 py-4 ${className}`}>{children}</div>;
 }
 
 type CardFooterProps = {
@@ -50,9 +56,11 @@ type CardFooterProps = {
   className?: string;
 };
 
-export function CardFooter({ children, className = '' }: CardFooterProps) {
+export function CardFooter({ children, className = "" }: CardFooterProps) {
   return (
-    <div className={`px-6 py-3 border-t border-neutral-200 bg-neutral-50 rounded-b-lg ${className}`}>
+    <div
+      className={`rounded-b-[1rem] border-t border-[var(--nsc-separator)] bg-[#fafafa] px-5 py-3 ${className}`}
+    >
       {children}
     </div>
   );

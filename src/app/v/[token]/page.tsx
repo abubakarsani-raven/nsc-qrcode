@@ -22,8 +22,10 @@ export default async function VerifyPage({ params }: Ctx) {
   if (!rl.ok) {
     return (
       <Shell>
-        <div className="rounded-lg bg-white p-6 text-center">
-          <p className="text-neutral-600">This verification link is not available.</p>
+        <div className="nsc-surface p-6 text-center">
+          <p className="text-[15px] text-[var(--nsc-secondary)]">
+            This verification link is not available.
+          </p>
         </div>
       </Shell>
     );
@@ -37,8 +39,10 @@ export default async function VerifyPage({ params }: Ctx) {
   if (!staff?.published) {
     return (
       <Shell>
-        <div className="rounded-lg bg-white p-6 text-center">
-          <p className="text-neutral-600">This verification link is not available.</p>
+        <div className="nsc-surface p-6 text-center">
+          <p className="text-[15px] text-[var(--nsc-secondary)]">
+            This verification link is not available.
+          </p>
         </div>
       </Shell>
     );
@@ -46,135 +50,150 @@ export default async function VerifyPage({ params }: Ctx) {
 
   const pub = staff.published;
   const suspended = staff.status === "SUSPENDED";
-  const photo =
-    pub.photoPreviewKey
-      ? `/api/photos/${staff.id}/${pub.photoPreviewKey}?token=${encodeURIComponent(token)}`
-      : null;
+  const photo = pub.photoPreviewKey
+    ? `/api/photos/${staff.id}/${pub.photoPreviewKey}?token=${encodeURIComponent(token)}`
+    : null;
 
   return (
     <Shell>
       {suspended ? (
-        <div className="mb-4 rounded-lg bg-red-100 px-4 py-3 text-center text-sm font-semibold text-red-800">
-          ⚠ SUSPENDED — This card is not valid for access
+        <div className="mb-4 rounded-2xl bg-[#ff3b30]/10 px-4 py-3 text-center text-[13px] font-semibold text-[#c41e16]">
+          Suspended — this card is not valid for access
         </div>
       ) : null}
-      
-      <div className="space-y-4">
-        {/* Header */}
+
+      <div className="space-y-5">
         <div className="text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#0d4720]/70">
-            Nigerian Shippers&apos; Council
+          <p className="nsc-section-label">Nigerian Shippers&apos; Council</p>
+          <p className="mt-1 text-[13px] text-[var(--nsc-secondary)]">
+            Staff verification
           </p>
-          <p className="mt-0.5 text-xs text-neutral-500">Staff Verification</p>
         </div>
 
-        {/* Card */}
-        <div className="rounded-lg border border-[#0d4720]/10 bg-white p-5 shadow-sm">
-          {/* Photo & Name */}
-          <div className="flex gap-4 pb-4 border-b border-neutral-100">
-            <div className="h-24 w-24 flex-shrink-0 rounded-full border-2 border-[#d3dcf1] bg-neutral-100 overflow-hidden">
+        <div className="nsc-surface overflow-hidden">
+          <div className="flex gap-4 border-b border-[var(--nsc-separator)] p-5">
+            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full bg-[var(--nsc-fill)] ring-2 ring-[var(--nsc-separator)]">
               {photo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={photo} alt="" className="h-full w-full object-cover" />
               ) : (
-                <div className="h-full w-full flex items-center justify-center text-xs text-neutral-400">
+                <div className="flex h-full w-full items-center justify-center text-[11px] text-[var(--nsc-secondary)]">
                   No photo
                 </div>
               )}
             </div>
-            <div className="flex-1 flex flex-col justify-center">
-              <h1 className="font-bold text-sm text-[#0d4720] leading-tight">
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <h1 className="text-[17px] font-semibold leading-tight tracking-tight text-[var(--nsc-ink)]">
                 {fullName(pub)}
               </h1>
-              <p className="text-xs uppercase text-neutral-600 mt-1">
+              <p className="mt-1 text-[12px] font-medium uppercase tracking-[0.04em] text-[var(--nsc-secondary)]">
                 {pub.designation}
               </p>
-              <p className="text-xs font-mono text-neutral-700 mt-2">
+              <p className="mt-2 font-mono text-[13px] text-[var(--nsc-ink)]">
                 ID {pub.idNumber}
               </p>
               <div className="mt-2">
                 <span
-                  className={`inline-block text-xs font-semibold px-2 py-0.5 rounded ${
+                  className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
                     suspended
-                      ? "bg-red-100 text-red-700"
-                      : "bg-emerald-100 text-emerald-700"
+                      ? "bg-[#ff3b30]/12 text-[#c41e16]"
+                      : "bg-[#34c759]/15 text-[var(--nsc-green)]"
                   }`}
                 >
-                  {suspended ? "SUSPENDED" : "ACTIVE"}
+                  {suspended ? "Suspended" : "Active"}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Details Grid */}
-          <div className="space-y-3 pt-4">
-            {pub.posting && (
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <p className="text-neutral-500 font-medium">Posting</p>
-                  <p className="mt-0.5 text-neutral-800">{pub.posting}</p>
-                </div>
-                {pub.department && (
-                  <div>
-                    <p className="text-neutral-500 font-medium">Department</p>
-                    <p className="mt-0.5 text-neutral-800">{pub.department}</p>
-                  </div>
-                )}
+          <div className="space-y-4 p-5 text-[13px]">
+            {pub.posting ? (
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Posting" value={pub.posting} />
+                {pub.department ? (
+                  <Field label="Department" value={pub.department} />
+                ) : null}
+              </div>
+            ) : null}
+
+            {(pub.officeLine || pub.emergencyContactName) && (
+              <div className="space-y-3 border-t border-[var(--nsc-separator)] pt-4">
+                {pub.officeLine ? (
+                  <Field label="Office line" value={pub.officeLine} mono />
+                ) : null}
+                {pub.emergencyContactName ? (
+                  <Field
+                    label="Emergency contact"
+                    value={`${pub.emergencyContactName}${
+                      pub.emergencyContactPhone
+                        ? ` · ${pub.emergencyContactPhone}`
+                        : ""
+                    }`}
+                  />
+                ) : null}
               </div>
             )}
 
-            {/* Contact Info */}
-            <div className="space-y-2 text-xs border-t border-neutral-100 pt-3">
-              {pub.officeLine && (
-                <div>
-                  <p className="text-neutral-500 font-medium">Office Line</p>
-                  <p className="mt-0.5 font-mono text-neutral-800">{pub.officeLine}</p>
-                </div>
-              )}
-              {pub.emergencyContactName && (
-                <div>
-                  <p className="text-neutral-500 font-medium">Emergency Contact</p>
-                  <p className="mt-0.5 text-neutral-800">
-                    {pub.emergencyContactName}
-                    {pub.emergencyContactPhone ? ` · ${pub.emergencyContactPhone}` : ""}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Health Info */}
             {(pub.bloodGroup || pub.genotype) && (
-              <div className="grid grid-cols-2 gap-4 text-xs border-t border-neutral-100 pt-3">
-                {pub.bloodGroup && (
-                  <div>
-                    <p className="text-neutral-500 font-medium">Blood Group</p>
-                    <p className="mt-0.5 font-semibold text-neutral-800">{pub.bloodGroup}</p>
-                  </div>
-                )}
-                {pub.genotype && (
-                  <div>
-                    <p className="text-neutral-500 font-medium">Genotype</p>
-                    <p className="mt-0.5 font-semibold text-neutral-800">{pub.genotype}</p>
-                  </div>
-                )}
+              <div className="grid grid-cols-2 gap-4 border-t border-[var(--nsc-separator)] pt-4">
+                {pub.bloodGroup ? (
+                  <Field label="Blood group" value={pub.bloodGroup} strong />
+                ) : null}
+                {pub.genotype ? (
+                  <Field label="Genotype" value={pub.genotype} strong />
+                ) : null}
               </div>
             )}
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-neutral-400">
-          NSC Staff ID Verification Portal
+        <p className="text-center text-[12px] text-[var(--nsc-secondary)]">
+          NSC Staff ID verification
         </p>
       </div>
     </Shell>
   );
 }
 
+function Field({
+  label,
+  value,
+  mono,
+  strong,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  strong?: boolean;
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--nsc-secondary)]">
+        {label}
+      </p>
+      <p
+        className={`mt-0.5 text-[var(--nsc-ink)] ${mono ? "font-mono" : ""} ${
+          strong ? "font-semibold" : ""
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 px-4 py-8">
-      <div className="mx-auto max-w-sm">{children}</div>
+    <div className="relative min-h-screen overflow-hidden bg-[var(--nsc-canvas)] px-4 py-10 text-[var(--nsc-ink)]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-70"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(13,71,32,0.10), transparent 55%)",
+        }}
+      />
+      <div className="relative mx-auto max-w-sm">{children}</div>
     </div>
   );
 }
