@@ -7,6 +7,11 @@ import {
   type FrontTemplateId,
 } from "@/lib/id-card/slots.generated";
 import { layoutName } from "@/lib/id-card/name-layout";
+import {
+  CARD_THEMES,
+  NAME_TOP_NUDGE_PT,
+  TITLE_RULE,
+} from "@/lib/id-card/theme";
 import { publicVerifyUrl } from "@/lib/qr";
 import { roundedQrDataUrl } from "@/lib/qr-render";
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +35,7 @@ export function CardPreview(props: Props) {
   const width = PAGE.width * scale;
   const height = PAGE.height * scale;
   const front = FRONT_TEMPLATES[props.frontTemplate];
+  const theme = CARD_THEMES[front.colorMatch];
   const given = [props.firstName, props.middleName].filter(Boolean).join(" ");
   const name = useMemo(
     () => layoutName(props.lastName, given, props.frontTemplate),
@@ -50,7 +56,7 @@ export function CardPreview(props: Props) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`/id-card/templates/backs/${props.backTemplate}.png?v=15`}
+          src={`/id-card/templates/backs/${props.backTemplate}.png?v=17`}
           alt=""
           className="absolute inset-0 h-full w-full object-fill"
         />
@@ -88,10 +94,14 @@ export function CardPreview(props: Props) {
     zIndex: 2,
   };
 
-  // Sample WAVE cards are light geometric + dark green text (not dark charcoal).
-  const nameColor = "#0d4720";
-  const titleColor = "#1a3340";
-  const idColor = "#0d4720";
+  const ruleY1 =
+    (front.designation.y + front.designation.h + TITLE_RULE.firstOffsetPt) *
+    scale;
+  const ruleY2 = ruleY1 + TITLE_RULE.gapPt * scale;
+  const ruleX =
+    (front.contentAxisX - TITLE_RULE.widthPt / 2) * scale;
+  const ruleW = TITLE_RULE.widthPt * scale;
+  const ruleH = Math.max(1, TITLE_RULE.thicknessPt * scale);
 
   return (
     <div
@@ -100,7 +110,7 @@ export function CardPreview(props: Props) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={`/id-card/templates/fronts/${props.frontTemplate}.png?v=15`}
+        src={`/id-card/templates/fronts/${props.frontTemplate}.png?v=17`}
         alt=""
         className="absolute inset-0 h-full w-full object-fill"
       />
@@ -123,11 +133,12 @@ export function CardPreview(props: Props) {
         className="absolute text-center uppercase"
         style={{
           left: front.nameLine1.x * scale,
-          top: (front.nameLine1.y + 4) * scale,
+          top: (front.nameLine1.y + NAME_TOP_NUDGE_PT) * scale,
           width: front.nameLine1.w * scale,
           fontSize: name.fontSizePt * scale,
           lineHeight: `${name.leadingPt * scale}px`,
-          color: nameColor,
+          color: theme.name,
+          zIndex: 3,
         }}
       >
         <div className="whitespace-nowrap font-normal">
@@ -147,20 +158,44 @@ export function CardPreview(props: Props) {
         className="absolute whitespace-nowrap text-center uppercase"
         style={{
           left: front.designation.x * scale,
-          top: (front.designation.y + (props.frontTemplate === "WAVE_BLUE" ? -3 : 0)) * scale,
+          top: front.designation.y * scale,
           width: front.designation.w * scale,
           fontSize: 6 * scale,
           letterSpacing: "normal",
-          color: titleColor,
+          color: theme.designation,
+          zIndex: 3,
         }}
       >
         {props.designation}
       </div>
+      {/* Double rule under designation (replaces single/ghost lines in template art) */}
+      <div
+        className="absolute"
+        style={{
+          left: ruleX,
+          top: ruleY1,
+          width: ruleW,
+          height: ruleH,
+          backgroundColor: theme.rule,
+          zIndex: 3,
+        }}
+      />
+      <div
+        className="absolute"
+        style={{
+          left: ruleX,
+          top: ruleY2,
+          width: ruleW,
+          height: ruleH,
+          backgroundColor: theme.rule,
+          zIndex: 3,
+        }}
+      />
       <div
         className="absolute whitespace-nowrap text-center font-bold"
         style={{
           left: front.idNo.x * scale,
-          top: (front.idNo.y + (props.frontTemplate === "WAVE_BLUE" ? -3 : 0)) * scale,
+          top: front.idNo.y * scale,
           width: front.idNo.w * scale,
           fontSize: 6 * scale,
           letterSpacing: trackingPx(
@@ -169,7 +204,8 @@ export function CardPreview(props: Props) {
             front.idNo.w * scale,
             0.58,
           ),
-          color: idColor,
+          color: theme.idNo,
+          zIndex: 3,
         }}
       >
         ID NO. {props.idNumber}
@@ -201,4 +237,3 @@ function trackingPx(
   if (text.length < 2 || natural >= maxWidthPx) return 0;
   return (maxWidthPx - natural) / (text.length - 1);
 }
-

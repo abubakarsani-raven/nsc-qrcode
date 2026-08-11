@@ -16,6 +16,12 @@ import {
 import { layoutName } from "@/lib/id-card/name-layout";
 import { embedCardFonts } from "@/lib/id-card/fonts";
 import {
+  CARD_THEMES,
+  NAME_TOP_NUDGE_PT,
+  TITLE_RULE,
+  type CardColorMatch,
+} from "@/lib/id-card/theme";
+import {
   renderBackCardPng,
   renderFrontCardPng,
 } from "@/lib/id-card/render-preview-image";
@@ -35,9 +41,24 @@ export type StaffCardInput = {
   photoPreviewKey?: string | null;
 };
 
-const NAME_COLOR = rgb(0x0d / 255, 0x47 / 255, 0x20 / 255);
-const TITLE_COLOR = rgb(0x1a / 255, 0x33 / 255, 0x40 / 255);
-const ID_COLOR = rgb(0x0d / 255, 0x47 / 255, 0x20 / 255);
+function hexRgb(hex: string) {
+  const h = hex.replace("#", "");
+  return rgb(
+    parseInt(h.slice(0, 2), 16) / 255,
+    parseInt(h.slice(2, 4), 16) / 255,
+    parseInt(h.slice(4, 6), 16) / 255,
+  );
+}
+
+function themeColors(match: CardColorMatch) {
+  const t = CARD_THEMES[match];
+  return {
+    name: hexRgb(t.name),
+    designation: hexRgb(t.designation),
+    idNo: hexRgb(t.idNo),
+    rule: hexRgb(t.rule),
+  };
+}
 
 /** Sample text bboxes are loose; treat rect.y as the CSS top of the glyph box. */
 function baselineFromTop(rect: Rect, size: number, pageHeight = PAGE.height) {
@@ -116,11 +137,12 @@ function drawFrontText(
   bold: PDFFont,
 ) {
   const front = FRONT_TEMPLATES[staff.frontTemplate];
+  const colors = themeColors(front.colorMatch);
   const given = [staff.firstName, staff.middleName].filter(Boolean).join(" ");
   const name = layoutName(staff.lastName, given, staff.frontTemplate);
   const axis = front.contentAxisX;
 
-  const nameLine = { ...front.nameLine1, y: front.nameLine1.y + 4 };
+  const nameLine = { ...front.nameLine1, y: front.nameLine1.y + NAME_TOP_NUDGE_PT };
   drawMixedNameLine(
     page,
     name.surname,
@@ -129,13 +151,13 @@ function drawFrontText(
     bold,
     regular,
     name.fontSizePt,
-    NAME_COLOR,
+    colors.name,
     axis,
   );
   if (name.line2) {
     const line2Rect = {
       ...front.nameLine2,
-      y: front.nameLine1.y + 4 + name.leadingPt,
+      y: front.nameLine1.y + NAME_TOP_NUDGE_PT + name.leadingPt,
       h: name.fontSizePt + 2,
     };
     drawCenteredText(
@@ -144,31 +166,46 @@ function drawFrontText(
       line2Rect,
       regular,
       name.fontSizePt,
-      NAME_COLOR,
+      colors.name,
       axis,
     );
   }
 
-  const waveNudge = staff.frontTemplate === "WAVE_BLUE" ? -3 : 0;
   const designation = staff.designation.toUpperCase();
   drawCenteredText(
     page,
     designation,
-    { ...front.designation, y: front.designation.y + waveNudge },
+    front.designation,
     regular,
     6,
-    TITLE_COLOR,
+    colors.designation,
     axis,
   );
+
+  // Double rule under designation
+  const ruleYTop =
+    PAGE.height -
+    (front.designation.y + front.designation.h + TITLE_RULE.firstOffsetPt);
+  const ruleX = axis - TITLE_RULE.widthPt / 2;
+  for (const dy of [0, TITLE_RULE.gapPt]) {
+    page.drawRectangle({
+      x: ruleX,
+      y: ruleYTop - dy - TITLE_RULE.thicknessPt,
+      width: TITLE_RULE.widthPt,
+      height: TITLE_RULE.thicknessPt,
+      color: colors.rule,
+      borderWidth: 0,
+    });
+  }
 
   const idLabel = `ID NO. ${staff.idNumber}`;
   drawCenteredText(
     page,
     idLabel,
-    { ...front.idNo, y: front.idNo.y + waveNudge },
+    front.idNo,
     bold,
     6,
-    ID_COLOR,
+    colors.idNo,
     axis,
     {
       characterSpacing: fitCharacterSpacing(idLabel, bold, 6, front.idNo.w),

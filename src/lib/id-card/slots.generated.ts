@@ -72,14 +72,14 @@ function rect(x0: number, y0: number, x1: number, y1: number): Rect {
 
 const WAVE_SLOTS = {
   crest: rect(54.4, 7.3, 87.4, 35.0),
-  photo: rect(31.8, 52.7, 102.0, 140.4),
-  // Measured circular frame fill on sample pages 0/2 (68.4 × 68.4)
-  photoFrame: rect(36.61, 49.73, 105.01, 118.13),
-  // Tight line boxes (sample PDF bboxes overlap; use visual tops + ~12pt height)
-  nameLine1: rect(20.0, 121.4, 121.75, 133.4),
-  nameLine2: rect(20.0, 132.4, 121.75, 144.4),
-  designation: rect(20.0, 156.4, 121.75, 164.2),
-  idNo: rect(20.0, 171.7, 121.75, 179.7),
+  photo: rect(31.8, 58.7, 102.0, 146.4),
+  // Circular frame nudged +6pt vs sample so halo clears the org-name band
+  photoFrame: rect(36.61, 55.73, 105.01, 124.13),
+  // Clear of photo halo (~3.5pt)
+  nameLine1: rect(20.0, 132.0, 121.75, 144.0),
+  nameLine2: rect(20.0, 143.0, 121.75, 155.0),
+  designation: rect(20.0, 158.0, 121.75, 165.8),
+  idNo: rect(20.0, 173.0, 121.75, 181.0),
   qr: {
     moduleBox: rect(51.33, 186.0, 90.0, 224.5),
     quietModules: 4,
@@ -93,13 +93,20 @@ const WAVE_SLOTS = {
   },
 };
 
+/** WAVE_BLUE — keep clearance under a 2-line name. */
+const WAVE_BLUE_SLOTS = {
+  ...WAVE_SLOTS,
+  designation: rect(20.0, 156.0, 121.75, 164.0),
+  idNo: rect(20.0, 172.0, 121.75, 180.0),
+};
+
 const BAR_CIRCLE_SLOTS = {
   crest: rect(65.3, 4.7, 92.3, 27.2),
   photo: rect(39.7, 52.4, 109.8, 140.1),
   // Measured circular frame on sample pages 5/7
   photoFrame: rect(44.42, 49.4, 112.83, 117.81),
-  nameLine1: rect(28.0, 122.9, 129.0, 134.9),
-  nameLine2: rect(28.0, 133.6, 129.0, 145.6),
+  nameLine1: rect(28.0, 129.5, 129.0, 141.5),
+  nameLine2: rect(28.0, 140.5, 129.0, 152.5),
   designation: rect(28.0, 155.7, 129.0, 163.5),
   idNo: rect(28.0, 172.7, 129.0, 180.5),
   qr: {
@@ -116,11 +123,16 @@ const BAR_CIRCLE_SLOTS = {
 };
 
 const BAR_SQUARE_PHOTO = rect(47.2, 44.8, 110.1, 123.4);
+// Square frame sits lower than circle; name must clear frame + halo.
 const BAR_SQUARE_SLOTS = {
   ...BAR_CIRCLE_SLOTS,
   photo: BAR_SQUARE_PHOTO,
   photoFrame: BAR_SQUARE_PHOTO,
   photoRadiusPt: 6,
+  nameLine1: rect(28.0, 135.0, 129.0, 147.0),
+  nameLine2: rect(28.0, 146.0, 129.0, 158.0),
+  designation: rect(28.0, 160.5, 129.0, 168.3),
+  idNo: rect(28.0, 177.0, 129.0, 184.8),
 };
 
 export const FRONT_TEMPLATES: Record<FrontTemplateId, FrontSlots> = {
@@ -138,7 +150,7 @@ export const FRONT_TEMPLATES: Record<FrontTemplateId, FrontSlots> = {
     family: "wave",
     photoMask: "circle",
     colorMatch: "blue",
-    ...WAVE_SLOTS,
+    ...WAVE_BLUE_SLOTS,
   },
   BAR_BLUE_SQUARE: {
     id: "BAR_BLUE_SQUARE",

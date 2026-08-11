@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { auth, can } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { draftVsPublishedDiff } from "@/lib/staff";
@@ -33,6 +35,15 @@ export default async function StaffDetailPage({ params }: Ctx) {
   return (
     <div className="space-y-8">
       <div>
+        <p className="mb-2 text-[13px] text-[var(--nsc-secondary)]">
+          <Link href="/staff" className="hover:text-[var(--nsc-ink)]">
+            Staff
+          </Link>
+          <span className="mx-1.5">/</span>
+          <span className="text-[var(--nsc-ink)]">
+            {staff.lastName} {staff.firstName}
+          </span>
+        </p>
         <h1 className="nsc-page-title">
           {staff.lastName} {staff.firstName}
         </h1>
@@ -55,60 +66,66 @@ export default async function StaffDetailPage({ params }: Ctx) {
         </div>
       ) : null}
 
-      <StaffEditor
-        initial={{
-          id: staff.id,
-          idNumber: staff.idNumber,
-          firstName: staff.firstName,
-          middleName: staff.middleName,
-          lastName: staff.lastName,
-          designation: staff.designation,
-          officeLine: staff.officeLine,
-          emergencyContactName: staff.emergencyContactName,
-          emergencyContactPhone: staff.emergencyContactPhone,
-          bloodGroup: can(role, "medical") ? staff.bloodGroup : null,
-          genotype: can(role, "medical") ? staff.genotype : null,
-          frontTemplate: staff.frontTemplate as FrontTemplateId,
-          backTemplate: staff.backTemplate as BackTemplateId,
-          qrToken: staff.qrToken,
-          status: staff.status,
-          approvalState: staff.approvalState,
-          hasPendingEdits: staff.hasPendingEdits,
-          photoOriginalKey: staff.photoOriginalKey,
-          photoPreviewKey: staff.photoPreviewKey,
-          photoCrop: staff.photoCrop,
-          lastPrintedAt: staff.lastPrintedAt?.toISOString() ?? null,
-          canMedical: can(role, "medical"),
-          canApprove: can(role, "approve"),
-          canPrint: can(role, "print"),
-          canSuspend: can(role, "suspend"),
-          canQr: can(role, "regenerateQr"),
-        }}
-      />
+      <Suspense fallback={<div className="nsc-surface h-40 animate-pulse" />}>
+        <StaffEditor
+          initial={{
+            id: staff.id,
+            idNumber: staff.idNumber,
+            firstName: staff.firstName,
+            middleName: staff.middleName,
+            lastName: staff.lastName,
+            designation: staff.designation,
+            posting: staff.posting,
+            department: staff.department,
+            dateIssued: staff.dateIssued
+              ? staff.dateIssued.toISOString().slice(0, 10)
+              : null,
+            officeLine: staff.officeLine,
+            emergencyContactName: staff.emergencyContactName,
+            emergencyContactPhone: staff.emergencyContactPhone,
+            bloodGroup: can(role, "medical") ? staff.bloodGroup : null,
+            genotype: can(role, "medical") ? staff.genotype : null,
+            frontTemplate: staff.frontTemplate as FrontTemplateId,
+            backTemplate: staff.backTemplate as BackTemplateId,
+            qrToken: staff.qrToken,
+            status: staff.status,
+            approvalState: staff.approvalState,
+            hasPendingEdits: staff.hasPendingEdits,
+            photoOriginalKey: staff.photoOriginalKey,
+            photoPreviewKey: staff.photoPreviewKey,
+            photoCrop: staff.photoCrop,
+            lastPrintedAt: staff.lastPrintedAt?.toISOString() ?? null,
+            canMedical: can(role, "medical"),
+            canApprove: can(role, "approve"),
+            canPrint: can(role, "print"),
+            canSuspend: can(role, "suspend"),
+            canQr: can(role, "regenerateQr"),
+          }}
+        />
+      </Suspense>
 
-      <section className="nsc-surface p-5">
-        <h2 className="text-[15px] font-semibold tracking-tight text-[var(--nsc-ink)]">
-          Audit log
-        </h2>
-        <ul className="mt-3 space-y-0 text-[13px]">
-          {staff.auditEvents.map((e) => (
-            <li
-              key={e.id}
-              className="flex justify-between gap-3 border-t border-[var(--nsc-separator)] py-2.5 first:border-0 first:pt-0"
-            >
-              <span>
-                {e.type} · {e.actor.name}
-              </span>
-              <span className="text-[var(--nsc-secondary)]">
-                {e.createdAt.toLocaleString()}
-              </span>
-            </li>
-          ))}
+      <div className="nsc-surface overflow-hidden">
+        <div className="border-b border-[var(--nsc-separator)] px-5 py-3">
+          <h2 className="text-[15px] font-semibold tracking-tight">Audit log</h2>
+        </div>
+        <ul className="divide-y divide-[var(--nsc-separator)] text-[13px]">
           {staff.auditEvents.length === 0 ? (
-            <li className="text-[var(--nsc-secondary)]">No events yet</li>
-          ) : null}
+            <li className="px-5 py-8 text-center text-[var(--nsc-secondary)]">
+              No events yet
+            </li>
+          ) : (
+            staff.auditEvents.map((e) => (
+              <li key={e.id} className="flex flex-wrap gap-x-3 gap-y-1 px-5 py-3">
+                <span className="font-medium">{e.type}</span>
+                <span className="text-[var(--nsc-secondary)]">{e.actor.name}</span>
+                <span className="ml-auto text-[12px] text-[var(--nsc-secondary)]">
+                  {e.createdAt.toLocaleString()}
+                </span>
+              </li>
+            ))
+          )}
         </ul>
-      </section>
+      </div>
     </div>
   );
 }

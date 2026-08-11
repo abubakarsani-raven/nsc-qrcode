@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 export function StaffBulkActions({
@@ -9,11 +10,9 @@ export function StaffBulkActions({
   staff: { id: string; label: string }[];
 }) {
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
 
   async function exportMode(mode: string) {
     setBusy(true);
-    setMsg("");
     try {
       const res = await fetch("/api/staff/export", {
         method: "POST",
@@ -22,7 +21,7 @@ export function StaffBulkActions({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setMsg(data.error || "Export failed");
+        toast.error(data.error || "Export failed");
         return;
       }
       const blob = await res.blob();
@@ -32,7 +31,7 @@ export function StaffBulkActions({
       a.download = "nsc-id-cards.pdf";
       a.click();
       URL.revokeObjectURL(url);
-      setMsg("Download started");
+      toast.success("PDF download started");
     } finally {
       setBusy(false);
     }
@@ -43,7 +42,7 @@ export function StaffBulkActions({
   return (
     <div className="flex flex-wrap items-center gap-2 text-[13px]">
       <span className="text-[var(--nsc-secondary)]">
-        Export filtered ({staff.length})
+        Export these {staff.length} result{staff.length === 1 ? "" : "s"}
       </span>
       <Button
         type="button"
@@ -75,9 +74,6 @@ export function StaffBulkActions({
       >
         Impose A3
       </Button>
-      {msg ? (
-        <span className="text-[var(--nsc-secondary)]">{msg}</span>
-      ) : null}
     </div>
   );
 }

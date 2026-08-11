@@ -3,12 +3,14 @@
 import { SessionProvider } from "next-auth/react";
 import { LoadingProvider } from "@/lib/loading-context";
 import { LoadingOverlay } from "./loading-overlay";
+import { AppToaster } from "./ui/toaster";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
       <LoadingProvider>
         <LoadingOverlay />
+        <AppToaster />
         {children}
       </LoadingProvider>
     </SessionProvider>

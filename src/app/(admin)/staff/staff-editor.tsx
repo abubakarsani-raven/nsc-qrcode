@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { CardPreview } from "@/components/id-card/CardPreview";
 import { PhotoCropper } from "@/components/photo/PhotoCropper";
 import { useLoading } from "@/lib/loading-context";
@@ -19,6 +20,8 @@ import {
   FRONT_TEMPLATE_LABELS,
 } from "@/lib/id-card/template-labels";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Select,
   SelectContent,
@@ -60,9 +63,35 @@ type StaffData = {
   canQr?: boolean;
 };
 
+function StepPill({
+  label,
+  state,
+}: {
+  label: string;
+  state: "done" | "current" | "todo" | "blocked";
+}) {
+  const styles = {
+    done: "bg-[#e8f8ee] text-[var(--nsc-green)]",
+    current: "bg-[var(--nsc-ink)] text-white",
+    todo: "bg-[var(--nsc-fill)] text-[var(--nsc-secondary)]",
+    blocked: "bg-[#ffeceb] text-[#c41e16]",
+  } as const;
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-tight ${styles[state]}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function StaffEditor({ initial }: { initial?: StaffData }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { startLoading, setProgress, stopLoading } = useLoading();
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoSectionRef = useRef<HTMLDivElement>(null);
+
   const [form, setForm] = useState<StaffData>(
     initial ?? {
       idNumber: "",
@@ -76,14 +105,19 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
     },
   );
   const [side, setSide] = useState<"front" | "back">("front");
-  const [msg, setMsg] = useState("");
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [rawFile, setRawFile] = useState<File | null>(null);
-  // Bust browser cache after a re-crop — a prior 404/stale preview can stick
-  // even though Cache-Control says no-store on some Safari builds.
   const [photoRev, setPhotoRev] = useState(0);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [suspendOpen, setSuspendOpen] = useState(false);
+  const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
 
   const mismatch = nameColorMismatch(form.frontTemplate, form.backTemplate);
+  const hasPhoto = Boolean(form.photoPreviewKey);
+  const isApproved =
+    form.approvalState === "APPROVED" && !form.hasPendingEdits;
+  const printable = isApproved && hasPhoto && form.status !== "SUSPENDED";
 
   const photoUrl = useMemo(() => {
     if (!form.id || !form.photoPreviewKey) return null;
@@ -99,6 +133,13 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
     }
   }, [form.photoCrop]);
 
+  useEffect(() => {
+    if (searchParams.get("photo") !== "1" || !form.id || hasPhoto) return;
+    photoSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const t = window.setTimeout(() => photoInputRef.current?.click(), 450);
+    return () => window.clearTimeout(t);
+  }, [searchParams, form.id, hasPhoto]);
+
   function set<K extends keyof StaffData>(key: K, value: StaffData[K]) {
     setForm((f) => {
       const next = { ...f, [key]: value };
@@ -110,7 +151,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   }
 
   async function save() {
-    setMsg("");
     startLoading(form.id ? "Updating staff..." : "Creating staff record...", 5);
 
     try {
@@ -145,22 +185,24 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       const data = await res.json();
       if (!res.ok) {
         stopLoading();
-        setMsg(typeof data.error === "string" ? data.error : "Save failed");
+        toast.error(typeof data.error === "string" ? data.error : "Save failed");
         return;
       }
 
       setProgress(100);
       stopLoading();
 
-      if (!form.id) router.push(`/staff/${data.staff.id}`);
-      else {
+      if (!form.id) {
+        toast.success("Staff created — add a photo next");
+        router.push(`/staff/${data.staff.id}?photo=1`);
+      } else {
         setForm((f) => ({ ...f, ...data.staff }));
-        setMsg("✓ Saved successfully");
+        toast.success("Saved");
         router.refresh();
       }
     } catch (error) {
       stopLoading();
-      setMsg(error instanceof Error ? error.message : "Save failed");
+      toast.error(error instanceof Error ? error.message : "Save failed");
     }
   }
 
@@ -172,16 +214,17 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       const data = await res.json();
       if (!res.ok) {
         stopLoading();
-        return setMsg(data.error || "Approve failed");
+        toast.error(data.error || "Approve failed");
+        return;
       }
       setProgress(100);
       stopLoading();
       setForm((f) => ({ ...f, ...data.staff }));
-      setMsg("✓ Approved & published");
+      toast.success("Approved and published");
       router.refresh();
     } catch (error) {
       stopLoading();
-      setMsg(error instanceof Error ? error.message : "Approve failed");
+      toast.error(error instanceof Error ? error.message : "Approve failed");
     }
   }
 
@@ -192,43 +235,62 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       body: JSON.stringify({ status }),
     });
     const data = await res.json();
-    if (!res.ok) return setMsg(data.error || "Status update failed");
+    if (!res.ok) {
+      toast.error(data.error || "Status update failed");
+      return;
+    }
     setForm((f) => ({ ...f, ...data.staff }));
-    setMsg(status === "SUSPENDED" ? "Suspended" : "Reactivated");
+    toast.success(status === "SUSPENDED" ? "Staff suspended" : "Staff reactivated");
+    router.refresh();
   }
 
   async function regenerateQr() {
-    if (!confirm("Regenerate QR? Printed cards become invalid. Type OK in next step.")) return;
-    const typed = prompt('Type REGENERATE to confirm');
-    if (typed !== "REGENERATE") return;
     const res = await fetch(`/api/staff/${form.id}/qr`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: "REGENERATE" }),
     });
     const data = await res.json();
-    if (!res.ok) return setMsg(data.error || "Failed");
+    if (!res.ok) {
+      toast.error(data.error || "Failed to regenerate QR");
+      return;
+    }
     setForm((f) => ({ ...f, qrToken: data.staff.qrToken }));
-    setMsg(data.warning || "QR regenerated");
+    if (data.warning) toast.warning(data.warning);
+    else toast.success("QR regenerated");
+    router.refresh();
   }
 
   async function printOne() {
-    const res = await fetch("/api/staff/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: [form.id], mode: "single" }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setMsg(data.error || "Print blocked");
-      return;
+    startLoading("Preparing PDF...", 12);
+    try {
+      setProgress(40);
+      const res = await fetch("/api/staff/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [form.id], mode: "single" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        stopLoading();
+        toast.error(data.error || "Print blocked");
+        return;
+      }
+      setProgress(90);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${form.idNumber}-id-card.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setProgress(100);
+      stopLoading();
+      toast.success("PDF download started");
+    } catch (error) {
+      stopLoading();
+      toast.error(error instanceof Error ? error.message : "PDF failed");
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${form.idNumber}-id-card.pdf`;
-    a.click();
   }
 
   function downloadQr(format: "png" | "svg" = "png") {
@@ -237,12 +299,10 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
     a.href = `/api/staff/${form.id}/qr/download?format=${format}`;
     a.download = `nsc-qr-${form.idNumber}.${format}`;
     a.click();
-    setMsg(`QR ${format.toUpperCase()} download started`);
+    toast.success(`QR ${format.toUpperCase()} download started`);
   }
 
   async function onFile(file: File) {
-    // Downscale before cropping, never after: the crop box is in pixels of
-    // whatever image the user cropped, so resizing later would misalign it.
     try {
       const normalized = await normalizePhoto(file);
       setRawFile(normalized.file);
@@ -250,10 +310,10 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       if (normalized.resized) {
         const from = (normalized.originalBytes / 1024 / 1024).toFixed(1);
         const to = (normalized.file.size / 1024 / 1024).toFixed(1);
-        setMsg(`Photo resized for upload (${from}MB → ${to}MB); print quality is unaffected.`);
+        toast.message(`Photo resized for upload (${from}MB → ${to}MB)`);
       }
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Could not read that image");
+      toast.error(err instanceof Error ? err.message : "Could not read that image");
     }
   }
 
@@ -273,8 +333,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
 
       setProgress(10);
 
-      // Ask for an upload signature. If Cloudinary is not configured (local
-      // dev) this 501s and we fall back to posting the file to our own API.
       const signRes = await fetch(`/api/photos/sign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -285,8 +343,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       if (signRes.ok) {
         const sign = await signRes.json();
 
-        // The original goes browser -> Cloudinary directly. Routing it through
-        // our API would exceed Vercel's 4.5 MB body limit and return 413.
         const cloud = new FormData();
         cloud.append("file", rawFile);
         cloud.append("api_key", sign.apiKey);
@@ -303,13 +359,12 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         if (!upload.ok) {
           const detail = await upload.text();
           stopLoading();
-          setMsg(`Upload to Cloudinary failed: ${detail.slice(0, 200)}`);
+          toast.error(`Upload to Cloudinary failed: ${detail.slice(0, 200)}`);
           return;
         }
 
         setProgress(60);
 
-        // Only the crop box crosses our own API — a few hundred bytes.
         res = await fetch(`/api/staff/${form.id}/photo`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -328,11 +383,9 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
 
       setProgress(80);
 
-      // A 413 comes from the platform, not the app, so the body is HTML and
-      // res.json() would throw a misleading parse error instead of the cause.
       if (res.status === 413) {
         stopLoading();
-        setMsg(
+        toast.error(
           "Photo too large for the server to accept. Cloudinary upload is not configured on this deployment.",
         );
         return;
@@ -341,7 +394,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       const data = await res.json().catch(() => ({}) as { error?: string });
       if (!res.ok) {
         stopLoading();
-        setMsg(data.error || `Photo save failed (${res.status})`);
+        toast.error(data.error || `Photo save failed (${res.status})`);
         return;
       }
 
@@ -352,11 +405,12 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       setPhotoRev((n) => n + 1);
       setCropSrc(null);
       setRawFile(null);
-      setMsg(`✓ Photo saved (${Math.round(data.dpi)} dpi)`);
+      toast.success(`Photo saved (${Math.round(data.dpi)} dpi)`);
+      router.replace(`/staff/${form.id}`);
       router.refresh();
     } catch (error) {
       stopLoading();
-      setMsg(error instanceof Error ? error.message : "Photo save failed");
+      toast.error(error instanceof Error ? error.message : "Photo save failed");
     }
   }
 
@@ -368,237 +422,339 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         const blob = await res.blob();
         const file = new File([blob], form.photoOriginalKey, { type: blob.type });
         onFile(file);
+      } else {
+        toast.error("Failed to load photo for editing");
       }
-    } catch (err) {
-      setMsg("Failed to load photo for editing");
+    } catch {
+      toast.error("Failed to load photo for editing");
     }
   }
 
+  const detailsDone = Boolean(
+    form.idNumber && form.firstName && form.lastName && form.designation,
+  );
+
   return (
     <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="order-2 space-y-5 nsc-surface p-5 md:order-1 md:p-6">
-        <div>
-          <h2 className="text-[17px] font-semibold tracking-tight text-[var(--nsc-ink)]">
-            Staff details
-          </h2>
-          <p className="mt-1 text-[13px] text-[var(--nsc-secondary)]">
-            Edits update the live card preview. Save when ready.
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {(
-            [
-              ["idNumber", "ID number"],
-              ["lastName", "Surname (bold on card)"],
-              ["firstName", "First name"],
-              ["middleName", "Middle name"],
-              ["designation", "Designation"],
-              ["posting", "Posting / Job Title"],
-              ["department", "Department"],
-              ["dateIssued", "Date Issued"],
-              ["officeLine", "Office line"],
-              ["emergencyContactName", "Emergency contact"],
-              ["emergencyContactPhone", "Emergency phone"],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className="text-[13px]">
-              <span className="text-[var(--nsc-secondary)]">{label}</span>
-              <input
-                className="nsc-field"
-                value={(form[key] as string) ?? ""}
-                onChange={(e) => set(key, e.target.value)}
-              />
-            </label>
-          ))}
-          {form.canMedical !== false && (
-            <>
-              <label className="text-[13px]">
-                <span className="text-[var(--nsc-secondary)]">Blood group (admin only)</span>
-                <input
-                  className="nsc-field"
-                  value={form.bloodGroup ?? ""}
-                  onChange={(e) => set("bloodGroup", e.target.value)}
-                />
-              </label>
-              <label className="text-[13px]">
-                <span className="text-[var(--nsc-secondary)]">Genotype (admin only)</span>
-                <input
-                  className="nsc-field"
-                  value={form.genotype ?? ""}
-                  onChange={(e) => set("genotype", e.target.value)}
-                />
-              </label>
-            </>
-          )}
+      <div className="order-2 space-y-5 md:order-1">
+        <div className="nsc-surface flex flex-wrap gap-2 p-3 sm:p-4">
+          <StepPill
+            label="1. Details"
+            state={detailsDone ? "done" : "current"}
+          />
+          <StepPill
+            label="2. Photo"
+            state={
+              !form.id
+                ? "todo"
+                : hasPhoto
+                  ? "done"
+                  : "current"
+            }
+          />
+          <StepPill
+            label="3. Approve"
+            state={
+              !hasPhoto
+                ? "todo"
+                : isApproved
+                  ? "done"
+                  : "current"
+            }
+          />
+          <StepPill
+            label="4. Print"
+            state={
+              form.status === "SUSPENDED"
+                ? "blocked"
+                : printable
+                  ? "done"
+                  : "todo"
+            }
+          />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="front-template">Front template</Label>
-            <Select
-              value={form.frontTemplate}
-              onValueChange={(value) => {
-                if (value != null) set("frontTemplate", value as FrontTemplateId);
-              }}
-              items={FRONT_TEMPLATE_LABELS}
-            >
-              <SelectTrigger id="front-template" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(FRONT_TEMPLATES) as FrontTemplateId[]).map((id) => (
-                  <SelectItem key={id} value={id}>
-                    {FRONT_TEMPLATE_LABELS[id]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="nsc-surface space-y-5 p-5 md:p-6">
+          <div>
+            <h2 className="text-[17px] font-semibold tracking-tight text-[var(--nsc-ink)]">
+              Staff details
+            </h2>
+            <p className="mt-1 text-[13px] text-[var(--nsc-secondary)]">
+              Edits update the live card preview. Save when ready.
+            </p>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="back-template">Back template</Label>
-            <Select
-              value={form.backTemplate}
-              onValueChange={(value) => {
-                if (value != null) set("backTemplate", value as BackTemplateId);
-              }}
-              items={BACK_TEMPLATE_LABELS}
-            >
-              <SelectTrigger id="back-template" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(BACK_TEMPLATES) as BackTemplateId[]).map((id) => (
-                  <SelectItem key={id} value={id}>
-                    {BACK_TEMPLATE_LABELS[id]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {mismatch ? (
-          <p className="text-sm text-amber-700">
-            Warning: front/back colour families differ.
-          </p>
-        ) : null}
 
-        {form.id ? (
-          <div className="space-y-2">
-            <label className="block text-[13px]">
-              <span className="text-[var(--nsc-secondary)]">Photo (camera or file)</span>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="mt-1.5 block w-full text-[13px] text-[var(--nsc-secondary)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--nsc-fill)] file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-[var(--nsc-ink)]"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onFile(f);
-                }}
-              />
-            </label>
-            {form.photoPreviewKey && (
-              <button
-                type="button"
-                onClick={editPositioning}
-                className="text-[13px] font-medium text-[var(--nsc-green)] hover:underline"
-              >
-                Edit positioning
-              </button>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {(
+              [
+                ["idNumber", "ID number"],
+                ["lastName", "Surname (bold on card)"],
+                ["firstName", "First name"],
+                ["middleName", "Middle name"],
+                ["designation", "Designation"],
+                ["posting", "Posting / Job Title"],
+                ["department", "Department"],
+                ["dateIssued", "Date Issued"],
+                ["officeLine", "Office line"],
+                ["emergencyContactName", "Emergency contact"],
+                ["emergencyContactPhone", "Emergency phone"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="text-[13px]">
+                <span className="text-[var(--nsc-secondary)]">{label}</span>
+                <input
+                  className="nsc-field"
+                  value={(form[key] as string) ?? ""}
+                  onChange={(e) => set(key, e.target.value)}
+                />
+              </label>
+            ))}
+            {form.canMedical !== false && (
+              <>
+                <label className="text-[13px]">
+                  <span className="text-[var(--nsc-secondary)]">
+                    Blood group (admin only)
+                  </span>
+                  <input
+                    className="nsc-field"
+                    value={form.bloodGroup ?? ""}
+                    onChange={(e) => set("bloodGroup", e.target.value)}
+                  />
+                </label>
+                <label className="text-[13px]">
+                  <span className="text-[var(--nsc-secondary)]">
+                    Genotype (admin only)
+                  </span>
+                  <input
+                    className="nsc-field"
+                    value={form.genotype ?? ""}
+                    onChange={(e) => set("genotype", e.target.value)}
+                  />
+                </label>
+              </>
             )}
           </div>
-        ) : (
-          <p className="text-[13px] text-[var(--nsc-secondary)]">
-            Save the record before capturing a photo.
-          </p>
-        )}
 
-        <div className="flex flex-wrap gap-2 border-t border-[var(--nsc-separator)] pt-4">
-          {form.id ? (
-            <button
-              type="button"
-              onClick={() => {
-                const qrUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/v/${form.qrToken}`;
-                window.open(qrUrl, "_blank");
-              }}
-              className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium text-[var(--nsc-ink)] hover:bg-[#fafafa]"
-            >
-              Preview QR page
-            </button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="front-template">Front template</Label>
+              <Select
+                value={form.frontTemplate}
+                onValueChange={(value) => {
+                  if (value != null) set("frontTemplate", value as FrontTemplateId);
+                }}
+                items={FRONT_TEMPLATE_LABELS}
+              >
+                <SelectTrigger id="front-template" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(FRONT_TEMPLATES) as FrontTemplateId[]).map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {FRONT_TEMPLATE_LABELS[id]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="back-template">Back template</Label>
+              <Select
+                value={form.backTemplate}
+                onValueChange={(value) => {
+                  if (value != null) set("backTemplate", value as BackTemplateId);
+                }}
+                items={BACK_TEMPLATE_LABELS}
+              >
+                <SelectTrigger id="back-template" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(BACK_TEMPLATES) as BackTemplateId[]).map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {BACK_TEMPLATE_LABELS[id]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {mismatch ? (
+            <p className="rounded-xl bg-[#fff4e5] px-3 py-2 text-[13px] text-[#9a5b00]">
+              Front and back colour families differ.
+            </p>
           ) : null}
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-full bg-[var(--nsc-green)] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-[var(--nsc-green-hover)]"
+
+          <div
+            ref={photoSectionRef}
+            className={`rounded-2xl border border-dashed p-4 ${
+              form.id && !hasPhoto
+                ? "border-[var(--nsc-green)] bg-[#eef5f0]"
+                : "border-[var(--nsc-separator)] bg-[#fafafa]"
+            }`}
           >
-            Save
-          </button>
-          {form.id && form.canApprove !== false ? (
-            <button
-              type="button"
-              onClick={approve}
-              className="rounded-full border border-[var(--nsc-green)] px-3.5 py-2 text-[13px] font-medium text-[var(--nsc-green)] hover:bg-[var(--accent)]"
-            >
-              Approve / publish
-            </button>
+            {form.id ? (
+              <div className="space-y-2">
+                <p className="text-[13px] font-medium text-[var(--nsc-ink)]">
+                  {hasPhoto ? "Staff photo" : "Add a staff photo"}
+                </p>
+                <p className="text-[12px] text-[var(--nsc-secondary)]">
+                  Use the camera or upload a file. Crop to fit the card.
+                </p>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="mt-1 block w-full text-[13px] text-[var(--nsc-secondary)] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-[var(--nsc-ink)] file:shadow-sm"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onFile(f);
+                  }}
+                />
+                {hasPhoto ? (
+                  <button
+                    type="button"
+                    onClick={editPositioning}
+                    className="text-[13px] font-medium text-[var(--nsc-green)] hover:underline"
+                  >
+                    Edit positioning
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-[13px] text-[var(--nsc-secondary)]">
+                Save the record first, then you can capture a photo.
+              </p>
+            )}
+          </div>
+
+          {form.hasPendingEdits ? (
+            <p className="rounded-xl bg-[#fff4e5] px-3 py-2 text-[13px] text-[#9a5b00]">
+              Changes awaiting approval — printing blocked until published.
+            </p>
           ) : null}
-          {form.id && form.canPrint !== false ? (
-            <button
-              type="button"
-              onClick={printOne}
-              className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
-            >
-              Download PDF
-            </button>
-          ) : null}
-          {form.id ? (
-            <>
-              <button
+
+          <div className="sticky bottom-3 z-20 -mx-1 space-y-3 rounded-2xl border border-[var(--nsc-separator)] bg-white/95 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none">
+            <div className="flex flex-wrap gap-2 border-t border-[var(--nsc-separator)] pt-0 sm:border-t sm:pt-4">
+              <Button
                 type="button"
-                onClick={() => downloadQr("png")}
-                className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
+                onClick={save}
+                className="rounded-full bg-[var(--nsc-green)] px-4 hover:bg-[var(--nsc-green-hover)]"
               >
-                QR PNG
-              </button>
-              <button
-                type="button"
-                onClick={() => downloadQr("svg")}
-                className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
-              >
-                QR SVG
-              </button>
-            </>
-          ) : null}
-          {form.id && form.canSuspend !== false ? (
-            <button
-              type="button"
-              onClick={() =>
-                setStatus(form.status === "SUSPENDED" ? "ACTIVE" : "SUSPENDED")
-              }
-              className="rounded-full border border-red-200 bg-white px-3.5 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50"
-            >
-              {form.status === "SUSPENDED" ? "Reactivate" : "Suspend"}
-            </button>
-          ) : null}
-          {form.id && form.canQr !== false ? (
-            <button
-              type="button"
-              onClick={regenerateQr}
-              className="rounded-full border border-[var(--nsc-separator)] bg-white px-3.5 py-2 text-[13px] font-medium hover:bg-[#fafafa]"
-            >
-              Regenerate QR
-              {form.lastPrintedAt ? " (was printed)" : ""}
-            </button>
-          ) : null}
+                Save
+              </Button>
+              {form.id && form.canApprove !== false && !isApproved ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={approve}
+                  disabled={!hasPhoto}
+                  className="rounded-full border-[var(--nsc-green)] text-[var(--nsc-green)]"
+                  title={!hasPhoto ? "Add a photo before approving" : undefined}
+                >
+                  Approve / publish
+                </Button>
+              ) : null}
+              {form.id && form.canPrint !== false ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={printOne}
+                  disabled={!printable}
+                  className="rounded-full"
+                  title={
+                    !printable
+                      ? "Approve with a photo before printing"
+                      : undefined
+                  }
+                >
+                  Download PDF
+                </Button>
+              ) : null}
+              {form.id ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setMoreOpen((v) => !v)}
+                  className="rounded-full"
+                >
+                  {moreOpen ? "Hide more" : "More actions"}
+                </Button>
+              ) : null}
+            </div>
+
+            {form.id && moreOpen ? (
+              <div className="flex flex-wrap gap-2 rounded-xl bg-[#fafafa] p-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => {
+                    const qrUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/v/${form.qrToken}`;
+                    window.open(qrUrl, "_blank");
+                  }}
+                >
+                  Preview QR page
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => downloadQr("png")}
+                >
+                  QR PNG
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => downloadQr("svg")}
+                >
+                  QR SVG
+                </Button>
+                {form.canSuspend !== false ? (
+                  form.status === "SUSPENDED" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => setReactivateOpen(true)}
+                    >
+                      Reactivate
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full border-red-200 text-red-600 hover:bg-red-50"
+                      onClick={() => setSuspendOpen(true)}
+                    >
+                      Suspend
+                    </Button>
+                  )
+                ) : null}
+                {form.canQr !== false ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full border-red-200 text-red-600 hover:bg-red-50"
+                    onClick={() => setRegenOpen(true)}
+                  >
+                    Regenerate QR
+                    {form.lastPrintedAt ? " (was printed)" : ""}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
-        {msg ? (
-          <p className="text-[13px] text-[var(--nsc-secondary)]">{msg}</p>
-        ) : null}
-        {form.hasPendingEdits ? (
-          <p className="rounded-xl bg-[#fff4e5] px-3 py-2 text-[13px] text-[#9a5b00]">
-            Changes awaiting approval — printing blocked until published.
-          </p>
-        ) : null}
       </div>
 
       <aside className="order-1 space-y-3 md:sticky md:top-20 md:order-2">
@@ -667,6 +823,34 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
           onSave={saveCrop}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={suspendOpen}
+        onOpenChange={setSuspendOpen}
+        title="Suspend this staff card?"
+        description="The verification page will show Suspended and the card should not be used for access."
+        confirmLabel="Suspend"
+        destructive
+        onConfirm={() => setStatus("SUSPENDED")}
+      />
+      <ConfirmDialog
+        open={reactivateOpen}
+        onOpenChange={setReactivateOpen}
+        title="Reactivate this staff card?"
+        description="The card will show as Active on the verification page again."
+        confirmLabel="Reactivate"
+        onConfirm={() => setStatus("ACTIVE")}
+      />
+      <ConfirmDialog
+        open={regenOpen}
+        onOpenChange={setRegenOpen}
+        title="Regenerate QR code?"
+        description="Printed cards with the old QR become invalid immediately. This cannot be undone."
+        confirmLabel="Regenerate"
+        destructive
+        requireText="REGENERATE"
+        onConfirm={regenerateQr}
+      />
     </div>
   );
 }

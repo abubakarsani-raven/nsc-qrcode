@@ -1,7 +1,9 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { auth, signOut } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { AdminNavLinks } from "@/components/admin-nav-links";
 
 export default async function AdminLayout({
   children,
@@ -24,17 +26,9 @@ export default async function AdminLayout({
                 Staff ID
               </span>
             </Link>
-            <nav className="hidden items-center gap-1 sm:flex">
-              <Link href="/staff" className="nsc-nav-link">
-                Staff
-              </Link>
-              <Link href="/staff?missingPhoto=1" className="nsc-nav-link">
-                Photo queue
-              </Link>
-              <Link href="/import" className="nsc-nav-link">
-                Import
-              </Link>
-            </nav>
+            <Suspense fallback={<div className="hidden h-8 w-48 sm:block" />}>
+              <AdminNavLinks className="hidden items-center gap-1 sm:flex" />
+            </Suspense>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden text-right sm:block">
@@ -57,20 +51,9 @@ export default async function AdminLayout({
             </form>
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto border-t border-[var(--nsc-separator)] px-4 py-2 sm:hidden">
-          <Link href="/staff" className="nsc-nav-link whitespace-nowrap">
-            Staff
-          </Link>
-          <Link
-            href="/staff?missingPhoto=1"
-            className="nsc-nav-link whitespace-nowrap"
-          >
-            Photo queue
-          </Link>
-          <Link href="/import" className="nsc-nav-link whitespace-nowrap">
-            Import
-          </Link>
-        </nav>
+        <Suspense fallback={<div className="h-10 sm:hidden" />}>
+          <AdminNavLinks className="flex gap-1 overflow-x-auto border-t border-[var(--nsc-separator)] px-4 py-2 sm:hidden" />
+        </Suspense>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
         {children}

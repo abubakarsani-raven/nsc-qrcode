@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { StaffEditor } from "../staff-editor";
 
 export default function NewStaffPage() {
@@ -9,7 +10,9 @@ export default function NewStaffPage() {
           Create a draft record, then add a photo before approval.
         </p>
       </div>
-      <StaffEditor />
+      <Suspense fallback={<div className="nsc-surface h-40 animate-pulse" />}>
+        <StaffEditor />
+      </Suspense>
     </div>
   );
 }
