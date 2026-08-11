@@ -2,12 +2,19 @@ import {
   PDFDocument,
   rgb,
   degrees,
+  type PDFPage,
+  type PDFFont,
+  type RGB,
 } from "pdf-lib";
 import {
+  FRONT_TEMPLATES,
   PAGE,
   type BackTemplateId,
   type FrontTemplateId,
+  type Rect,
 } from "@/lib/id-card/slots.generated";
+import { layoutName } from "@/lib/id-card/name-layout";
+import { embedCardFonts } from "@/lib/id-card/fonts";
 import {
   renderBackCardPng,
   renderFrontCardPng,
@@ -28,14 +35,155 @@ export type StaffCardInput = {
   photoPreviewKey?: string | null;
 };
 
+const NAME_COLOR = rgb(0x0d / 255, 0x47 / 255, 0x20 / 255);
+const TITLE_COLOR = rgb(0x1a / 255, 0x33 / 255, 0x40 / 255);
+const ID_COLOR = rgb(0x0d / 255, 0x47 / 255, 0x20 / 255);
+
+/** Sample text bboxes are loose; treat rect.y as the CSS top of the glyph box. */
+function baselineFromTop(rect: Rect, size: number, pageHeight = PAGE.height) {
+  return pageHeight - rect.y - size * 0.82;
+}
+
+function fitCharacterSpacing(
+  text: string,
+  font: PDFFont,
+  size: number,
+  targetWidth: number,
+) {
+  if (text.length < 2) return 0;
+  const natural = font.widthOfTextAtSize(text, size);
+  if (natural >= targetWidth) return 0;
+  return (targetWidth - natural) / (text.length - 1);
+}
+
+function drawMixedNameLine(
+  page: PDFPage,
+  surname: string,
+  givenPart: string,
+  rect: Rect,
+  bold: PDFFont,
+  regular: PDFFont,
+  size: number,
+  color: RGB,
+  axisX?: number,
+) {
+  const gap = givenPart ? bold.widthOfTextAtSize(" ", size) : 0;
+  const tw =
+    bold.widthOfTextAtSize(surname, size) +
+    gap +
+    (givenPart ? regular.widthOfTextAtSize(givenPart, size) : 0);
+  const cx = axisX ?? rect.x + rect.w / 2;
+  let x = cx - tw / 2;
+  const y = baselineFromTop(rect, size);
+  page.drawText(surname, { x, y, size, font: bold, color });
+  x += bold.widthOfTextAtSize(surname, size);
+  if (givenPart) {
+    page.drawText(` ${givenPart}`, { x, y, size, font: regular, color });
+  }
+}
+
+function drawCenteredText(
+  page: PDFPage,
+  text: string,
+  rect: Rect,
+  font: PDFFont,
+  size: number,
+  color: RGB,
+  axisX?: number,
+  opts?: { characterSpacing?: number },
+) {
+  const spacing = opts?.characterSpacing ?? 0;
+  const natural = font.widthOfTextAtSize(text, size);
+  const tw = natural + spacing * Math.max(0, text.length - 1);
+  const cx = axisX ?? rect.x + rect.w / 2;
+  const x = cx - tw / 2;
+  const y = baselineFromTop(rect, size);
+  page.drawText(text, {
+    x,
+    y,
+    size,
+    font,
+    color,
+    ...(spacing ? { characterSpacing: spacing } : {}),
+  } as Parameters<PDFPage["drawText"]>[1]);
+}
+
+/** Stamp name / designation / ID with embedded Poppins (works on Vercel). */
+function drawFrontText(
+  page: PDFPage,
+  staff: StaffCardInput,
+  regular: PDFFont,
+  bold: PDFFont,
+) {
+  const front = FRONT_TEMPLATES[staff.frontTemplate];
+  const given = [staff.firstName, staff.middleName].filter(Boolean).join(" ");
+  const name = layoutName(staff.lastName, given, staff.frontTemplate);
+  const axis = front.contentAxisX;
+
+  const nameLine = { ...front.nameLine1, y: front.nameLine1.y + 4 };
+  drawMixedNameLine(
+    page,
+    name.surname,
+    name.line1Given,
+    nameLine,
+    bold,
+    regular,
+    name.fontSizePt,
+    NAME_COLOR,
+    axis,
+  );
+  if (name.line2) {
+    const line2Rect = {
+      ...front.nameLine2,
+      y: front.nameLine1.y + 4 + name.leadingPt,
+      h: name.fontSizePt + 2,
+    };
+    drawCenteredText(
+      page,
+      name.line2,
+      line2Rect,
+      regular,
+      name.fontSizePt,
+      NAME_COLOR,
+      axis,
+    );
+  }
+
+  const waveNudge = staff.frontTemplate === "WAVE_BLUE" ? -3 : 0;
+  const designation = staff.designation.toUpperCase();
+  drawCenteredText(
+    page,
+    designation,
+    { ...front.designation, y: front.designation.y + waveNudge },
+    regular,
+    6,
+    TITLE_COLOR,
+    axis,
+  );
+
+  const idLabel = `ID NO. ${staff.idNumber}`;
+  drawCenteredText(
+    page,
+    idLabel,
+    { ...front.idNo, y: front.idNo.y + waveNudge },
+    bold,
+    6,
+    ID_COLOR,
+    axis,
+    {
+      characterSpacing: fitCharacterSpacing(idLabel, bold, 6, front.idNo.w),
+    },
+  );
+}
+
 /**
- * Build a print PDF by rasterizing the same composition as the live
- * `CardPreview` (PNG template + photo + text + QR) at 600 dpi, then placing
- * each side on a card-sized page. No separate pdf-lib stamping path — preview
- * and Download PDF share one visual pipeline.
+ * Print PDF = preview artwork (PNG template + photo + QR) + vector Poppins text.
+ * Text is not rasterized through sharp: Vercel’s librsvg often drops custom
+ * fonts and replaces glyphs with □ squares.
  */
 export async function renderStaffCardPdf(staff: StaffCardInput) {
   const out = await PDFDocument.create();
+  const { regular, bold } = await embedCardFonts(out);
 
   const frontPng = await renderFrontCardPng(staff);
   const frontImg = await out.embedPng(frontPng);
@@ -46,6 +194,7 @@ export async function renderStaffCardPdf(staff: StaffCardInput) {
     width: PAGE.width,
     height: PAGE.height,
   });
+  drawFrontText(frontPage, staff, regular, bold);
 
   const backPng = await renderBackCardPng(staff);
   const backImg = await out.embedPng(backPng);
