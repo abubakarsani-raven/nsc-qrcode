@@ -4,11 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
-export function StaffBulkActions({
-  staff,
-}: {
-  staff: { id: string; label: string }[];
-}) {
+export function StaffBulkActions({ ids }: { ids: string[] }) {
   const [busy, setBusy] = useState(false);
 
   async function exportMode(mode: string) {
@@ -17,7 +13,7 @@ export function StaffBulkActions({
       const res = await fetch("/api/staff/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: staff.map((s) => s.id), mode }),
+        body: JSON.stringify({ ids, mode }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -37,12 +33,12 @@ export function StaffBulkActions({
     }
   }
 
-  if (!staff.length) return null;
+  if (!ids.length) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 text-[13px]">
-      <span className="text-[var(--nsc-secondary)]">
-        Export these {staff.length} result{staff.length === 1 ? "" : "s"}
+    <div className="flex flex-wrap items-center gap-2 pb-3">
+      <span className="md-eyebrow mr-1">
+        Export all {ids.length} matching
       </span>
       <Button
         type="button"
@@ -50,7 +46,6 @@ export function StaffBulkActions({
         size="sm"
         disabled={busy}
         onClick={() => exportMode("batch")}
-        className="rounded-full"
       >
         Batch PDF
       </Button>
@@ -60,7 +55,6 @@ export function StaffBulkActions({
         size="sm"
         disabled={busy}
         onClick={() => exportMode("impose-a4")}
-        className="rounded-full"
       >
         Impose A4
       </Button>
@@ -70,7 +64,6 @@ export function StaffBulkActions({
         size="sm"
         disabled={busy}
         onClick={() => exportMode("impose-a3")}
-        className="rounded-full"
       >
         Impose A3
       </Button>

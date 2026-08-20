@@ -51,6 +51,7 @@ enum AuditType {
   PRINTED
   PHOTO_REPLACED
   IMPORTED
+  AUDIT_CLEARED
 }
 
 model User {
@@ -95,6 +96,7 @@ model Staff {
   photoCapturedAt          DateTime?
   frontTemplate            FrontTemplate  @default(WAVE_GREEN)
   backTemplate             BackTemplate   @default(BACK_WAVE_GREEN)
+  cardTypeScale            String?
   lastPrintedAt            DateTime?
   qrToken                  String         @unique
   createdAt                DateTime       @default(now())

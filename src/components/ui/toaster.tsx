@@ -5,15 +5,19 @@ import { Toaster } from "sonner";
 export function AppToaster() {
   return (
     <Toaster
-      position="top-center"
-      richColors
+      position="bottom-center"
       closeButton
       toastOptions={{
+        // M3 snackbar: inverse surface, 4dp corners, level-3 elevation
         classNames: {
           toast:
-            "rounded-2xl border border-[var(--nsc-separator)] shadow-[0_8px_30px_rgba(0,0,0,0.12)]",
-          title: "text-[14px] font-semibold tracking-tight",
-          description: "text-[13px] text-[var(--nsc-secondary)]",
+            "rounded-[var(--md-shape-xs)] border-0 bg-[var(--md-inverse-surface)] text-[var(--md-inverse-on-surface)] shadow-[var(--md-elevation-3)]",
+          title: "md-body-medium text-[var(--md-inverse-on-surface)]",
+          description: "md-body-small text-[var(--md-inverse-on-surface)]/80",
+          actionButton:
+            "md-label-large text-[var(--md-primary-container)] bg-transparent",
+          closeButton:
+            "bg-transparent border-0 text-[var(--md-inverse-on-surface)]",
         },
       }}
     />

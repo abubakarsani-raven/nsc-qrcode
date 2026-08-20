@@ -5,6 +5,7 @@ import { auth, can } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { draftVsPublishedDiff } from "@/lib/staff";
 import { StaffEditor } from "../staff-editor";
+import { AuditLog } from "../audit-log";
 import type {
   BackTemplateId,
   FrontTemplateId,
@@ -29,18 +30,23 @@ export default async function StaffDetailPage({ params }: Ctx) {
   });
   if (!staff) notFound();
 
+  // The list is capped at 30; the count tells the header how many exist.
+  const auditCount = await prisma.auditEvent.count({
+    where: { staffId: staff.id },
+  });
+
   const role = session!.user.role as Role;
   const diffs = draftVsPublishedDiff(staff, staff.published);
 
   return (
     <div className="space-y-8">
       <div>
-        <p className="mb-2 text-[13px] text-[var(--nsc-secondary)]">
-          <Link href="/staff" className="hover:text-[var(--nsc-ink)]">
+        <p className="md-body-medium mb-2 text-[var(--md-on-surface-variant)]">
+          <Link href="/staff" className="hover:text-[var(--md-primary)]">
             Staff
           </Link>
           <span className="mx-1.5">/</span>
-          <span className="text-[var(--nsc-ink)]">
+          <span className="text-[var(--md-on-surface)]">
             {staff.lastName} {staff.firstName}
           </span>
         </p>
@@ -48,14 +54,17 @@ export default async function StaffDetailPage({ params }: Ctx) {
           {staff.lastName} {staff.firstName}
         </h1>
         <p className="nsc-page-sub">
-          {staff.designation} · {staff.idNumber}
+          {staff.designation} ·{" "}
+          <span className="md-data">{staff.idNumber}</span>
         </p>
       </div>
 
       {diffs && diffs.length > 0 ? (
-        <div className="rounded-2xl border border-[#ffd60a]/40 bg-[#fff9e6] p-4 text-[13px]">
-          <p className="font-semibold text-[#9a5b00]">Draft vs published</p>
-          <ul className="mt-2 space-y-1 text-[#9a5b00]/90">
+        <div className="rounded-[var(--md-shape-md)] bg-[var(--md-warning-container)] p-4 text-[var(--md-on-warning-container)]">
+          <p className="md-title-small text-[var(--md-on-warning-container)]">
+            Draft vs published
+          </p>
+          <ul className="md-body-medium mt-2 space-y-1">
             {diffs.map((d) => (
               <li key={d.field}>
                 <span className="font-medium">{d.field}:</span> {d.published || "—"} →{" "}
@@ -66,7 +75,7 @@ export default async function StaffDetailPage({ params }: Ctx) {
         </div>
       ) : null}
 
-      <Suspense fallback={<div className="nsc-surface h-40 animate-pulse" />}>
+      <Suspense fallback={<div className="md-card h-40 animate-pulse" />}>
         <StaffEditor
           initial={{
             id: staff.id,
@@ -94,6 +103,7 @@ export default async function StaffDetailPage({ params }: Ctx) {
             photoOriginalKey: staff.photoOriginalKey,
             photoPreviewKey: staff.photoPreviewKey,
             photoCrop: staff.photoCrop,
+            cardTypeScale: staff.cardTypeScale,
             lastPrintedAt: staff.lastPrintedAt?.toISOString() ?? null,
             canMedical: can(role, "medical"),
             canApprove: can(role, "approve"),
@@ -104,28 +114,17 @@ export default async function StaffDetailPage({ params }: Ctx) {
         />
       </Suspense>
 
-      <div className="nsc-surface overflow-hidden">
-        <div className="border-b border-[var(--nsc-separator)] px-5 py-3">
-          <h2 className="text-[15px] font-semibold tracking-tight">Audit log</h2>
-        </div>
-        <ul className="divide-y divide-[var(--nsc-separator)] text-[13px]">
-          {staff.auditEvents.length === 0 ? (
-            <li className="px-5 py-8 text-center text-[var(--nsc-secondary)]">
-              No events yet
-            </li>
-          ) : (
-            staff.auditEvents.map((e) => (
-              <li key={e.id} className="flex flex-wrap gap-x-3 gap-y-1 px-5 py-3">
-                <span className="font-medium">{e.type}</span>
-                <span className="text-[var(--nsc-secondary)]">{e.actor.name}</span>
-                <span className="ml-auto text-[12px] text-[var(--nsc-secondary)]">
-                  {e.createdAt.toLocaleString()}
-                </span>
-              </li>
-            ))
-          )}
-        </ul>
-      </div>
+      <AuditLog
+        staffId={staff.id}
+        canClear={can(role, "clearAudit")}
+        totalCount={auditCount}
+        events={staff.auditEvents.map((e) => ({
+          id: e.id,
+          type: e.type,
+          actorName: e.actor.name,
+          createdAtLabel: e.createdAt.toLocaleString(),
+        }))}
+      />
     </div>
   );
 }

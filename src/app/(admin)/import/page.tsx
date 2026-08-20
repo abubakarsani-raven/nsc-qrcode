@@ -117,7 +117,7 @@ export default function ImportPage() {
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="nsc-page-title">Import</h1>
         <p className="nsc-page-sub">
@@ -125,37 +125,37 @@ export default function ImportPage() {
         </p>
       </div>
 
-      <div className="nsc-surface space-y-5 p-5 sm:p-6">
-        <div className="space-y-1.5">
-          <Label htmlFor="import-file">Spreadsheet</Label>
+      <div className="md-card space-y-6 p-4 sm:p-6">
+        <div>
+          <Label htmlFor="import-file" className="md-field-label">
+            Spreadsheet
+          </Label>
           <input
             id="import-file"
             type="file"
             accept=".csv,.xlsx"
-            className="block w-full text-[13px] text-[var(--nsc-secondary)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--nsc-fill)] file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-[var(--nsc-ink)]"
+            className="mt-2 block w-full text-sm text-[var(--md-on-surface-variant)] file:mr-3 file:h-10 file:rounded-full file:border file:border-[var(--md-outline)] file:bg-transparent file:px-4 file:text-sm file:font-medium file:text-[var(--md-primary)]"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) onFile(f);
             }}
           />
           {file ? (
-            <p className="text-[12px] text-[var(--nsc-secondary)]">{file.name}</p>
+            <p className="md-supporting-text">{file.name}</p>
           ) : null}
         </div>
 
         <div className="space-y-3">
-          <p className="text-[15px] font-semibold tracking-tight">
-            Column mapping
-          </p>
+          <p className="md-title-medium">Column mapping</p>
           {FIELDS.map((field) => (
             <div
               key={field}
-              className="flex flex-col gap-1.5 text-[13px] sm:flex-row sm:items-center sm:gap-3"
+              className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3"
             >
-              <span className="w-48 shrink-0 text-[var(--nsc-secondary)]">
+              <span className="md-body-medium w-48 shrink-0 text-[var(--md-on-surface-variant)]">
                 {FIELD_LABELS[field]}
                 {REQUIRED.has(field) ? (
-                  <span className="text-[#c41e16]"> *</span>
+                  <span className="text-[var(--md-error)]"> *</span>
                 ) : null}
               </span>
               {headers.length ? (
@@ -184,7 +184,7 @@ export default function ImportPage() {
                 </Select>
               ) : (
                 <input
-                  className="nsc-field flex-1"
+                  className="md-field mt-0 flex-1"
                   placeholder="Exact spreadsheet header"
                   value={mapping[field] ?? ""}
                   onChange={(e) =>
@@ -196,13 +196,12 @@ export default function ImportPage() {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-[var(--nsc-separator)] pt-4">
+        <div className="flex flex-wrap gap-2 border-t border-[var(--md-outline-variant)] pt-5">
           <Button
             type="button"
             variant="outline"
             disabled={!file || busy}
             onClick={() => run(true)}
-            className="rounded-full"
           >
             Dry run
           </Button>
@@ -210,7 +209,6 @@ export default function ImportPage() {
             type="button"
             disabled={!file || busy}
             onClick={() => run(false)}
-            className="rounded-full bg-[var(--nsc-green)] hover:bg-[var(--nsc-green-hover)]"
           >
             {busy ? "Working…" : "Import"}
           </Button>
@@ -225,9 +223,11 @@ export default function ImportPage() {
 function ImportSummary({ result }: { result: ImportResult }) {
   if (result.error && !result.rowCount) {
     return (
-      <div className="nsc-surface border border-[#ffeceb] bg-[#ffeceb]/40 p-5">
-        <p className="font-semibold text-[#c41e16]">Import failed</p>
-        <p className="mt-1 text-[13px] text-[#c41e16]">{result.error}</p>
+      <div className="rounded-[var(--md-shape-md)] bg-[var(--md-error-container)] p-4 text-[var(--md-on-error-container)]">
+        <p className="md-title-small text-[var(--md-on-error-container)]">
+          Import failed
+        </p>
+        <p className="md-body-medium mt-1">{result.error}</p>
       </div>
     );
   }
@@ -238,16 +238,16 @@ function ImportSummary({ result }: { result: ImportResult }) {
   const errorCount = result.errorCount ?? errors.length;
 
   return (
-    <div className="nsc-surface space-y-4 p-5 sm:p-6">
+    <div className="md-card space-y-5 p-4 sm:p-6">
       <div>
-        <h2 className="text-[17px] font-semibold tracking-tight">
+        <h2 className="md-title-medium">
           {result.dryRun
             ? "Dry run results"
             : result.blocked
               ? "Import blocked"
               : "Import complete"}
         </h2>
-        <p className="mt-1 text-[13px] text-[var(--nsc-secondary)]">
+        <p className="md-body-medium mt-1 text-[var(--md-on-surface-variant)]">
           {result.rowCount ?? 0} rows in file · {valid} ready · {errorCount}{" "}
           {errorCount === 1 ? "issue" : "issues"}
           {!result.dryRun && !result.blocked ? ` · ${created} created` : ""}
@@ -255,9 +255,11 @@ function ImportSummary({ result }: { result: ImportResult }) {
       </div>
 
       {errors.length > 0 ? (
-        <div className="rounded-xl bg-[#ffeceb]/50 p-3">
-          <p className="text-[13px] font-semibold text-[#c41e16]">Issues</p>
-          <ul className="mt-2 max-h-48 space-y-1 overflow-auto text-[12px] text-[#c41e16]">
+        <div className="rounded-[var(--md-shape-md)] bg-[var(--md-error-container)] p-3 text-[var(--md-on-error-container)]">
+          <p className="md-title-small text-[var(--md-on-error-container)]">
+            Issues
+          </p>
+          <ul className="md-body-small mt-2 max-h-48 space-y-1 overflow-auto text-[var(--md-on-error-container)]">
             {errors.slice(0, 40).map((e, i) => (
               <li key={`${e.row}-${i}`}>
                 Row {e.row}: {e.error}
@@ -272,8 +274,8 @@ function ImportSummary({ result }: { result: ImportResult }) {
 
       {result.preview && result.preview.length > 0 ? (
         <div>
-          <p className="text-[13px] font-semibold">Preview (first rows)</p>
-          <ul className="mt-2 max-h-40 space-y-1 overflow-auto text-[12px] text-[var(--nsc-secondary)]">
+          <p className="md-title-small">Preview (first rows)</p>
+          <ul className="md-body-small mt-2 max-h-40 space-y-1 overflow-auto">
             {result.preview.slice(0, 8).map((p) => (
               <li key={p.idNumber}>
                 {p.lastName} {p.firstName} · {p.idNumber} · {p.designation}
@@ -284,16 +286,12 @@ function ImportSummary({ result }: { result: ImportResult }) {
       ) : null}
 
       {!result.dryRun && !result.blocked && created > 0 ? (
-        <div className="flex flex-wrap gap-2 border-t border-[var(--nsc-separator)] pt-4">
+        <div className="flex flex-wrap gap-2 border-t border-[var(--md-outline-variant)] pt-5">
           <Link href="/staff?missingPhoto=1">
-            <Button className="rounded-full bg-[var(--nsc-green)] hover:bg-[var(--nsc-green-hover)]">
-              Open photo queue
-            </Button>
+            <Button>Open photo queue</Button>
           </Link>
           <Link href="/staff?approvalState=PENDING">
-            <Button variant="outline" className="rounded-full">
-              View pending
-            </Button>
+            <Button variant="outline">View pending</Button>
           </Link>
         </div>
       ) : null}

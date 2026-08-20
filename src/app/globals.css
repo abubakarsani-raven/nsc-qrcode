@@ -4,6 +4,50 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Roboto — Material's type face. Variable weight axis (100–900), self-hosted. */
+@font-face {
+  font-family: "Roboto";
+  src: url("/fonts/Roboto-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 100%;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Roboto";
+  src: url("/fonts/Roboto-latin-ext.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 100%;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Roboto Condensed — structural voice: column headers, eyebrows, identity lines. */
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("/fonts/RobotoCondensed-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Roboto Mono — every value an officer reads aloud or types back: IDs, dates, counts. */
+@font-face {
+  font-family: "Roboto Mono";
+  src: url("/fonts/RobotoMono-latin.woff2") format("woff2");
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Poppins stays for the ID card / PDF typography only. */
 @font-face {
   font-family: "Poppins";
   src: url("/fonts/Poppins-Regular.ttf") format("truetype");
@@ -21,58 +65,138 @@
 }
 
 /*
- * Light-only Apple-inspired admin shell for NSC Staff ID.
- * ID-card/PDF typography stays on Poppins; the product UI uses the system stack.
+ * NSC colour system — Material Design 3 role structure, cool institutional
+ * palette. This is a records system, so the chrome reads as one: navy and cool
+ * greys, with the green reserved for the card artwork it produces.
+ *
+ *   Admiralty #1B3A6B  navy — the institution, primary actions, completed work
+ *   Channel   #0E7490  teal — every interactive signal, and the stage you're on
+ *   Buoy      #B4530C  port-marker ochre — a record needs attention
+ *   Flag      #9A2420  signal red — blocked, suspended, destructive
+ *
+ * Colour only ever encodes state. Routine rows stay neutral, so the exceptions
+ * are the only thing that lights up.
  */
 :root {
   color-scheme: light;
-  --nsc-canvas: #f5f5f7;
-  --nsc-ink: #1d1d1f;
-  --nsc-secondary: #86868b;
-  --nsc-separator: rgba(60, 60, 67, 0.12);
-  --nsc-fill: rgba(120, 120, 128, 0.12);
-  --nsc-green: #0d4720;
-  --nsc-green-hover: #0a3318;
 
-  --background: #f5f5f7;
-  --foreground: #1d1d1f;
-  --card: #ffffff;
-  --card-foreground: #1d1d1f;
-  --popover: #ffffff;
-  --popover-foreground: #1d1d1f;
-  --primary: #0d4720;
-  --primary-foreground: #ffffff;
-  --secondary: #f0f0f2;
-  --secondary-foreground: #1d1d1f;
-  --muted: #f0f0f2;
-  --muted-foreground: #86868b;
-  --accent: #eef5f0;
-  --accent-foreground: #0d4720;
-  --destructive: #ff3b30;
-  --border: rgba(60, 60, 67, 0.12);
-  --input: rgba(60, 60, 67, 0.18);
-  --ring: #0d4720;
+  /* Primary — Admiralty */
+  --md-primary: #1b3a6b;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #d8e2fa;
+  --md-on-primary-container: #0a1d3c;
+
+  /* Secondary — cool slate, for quiet containers */
+  --md-secondary: #4f5b6b;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #dce3ec;
+  --md-on-secondary-container: #131c27;
+
+  /* Tertiary — Channel. Reserved for interaction: focus, links, in-progress. */
+  --md-tertiary: #0e7490;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #c5e8f2;
+  --md-on-tertiary-container: #002733;
+
+  /* Warning — Buoy */
+  --md-warning: #b4530c;
+  --md-on-warning: #ffffff;
+  --md-warning-container: #fbe2ce;
+  --md-on-warning-container: #2e1400;
+
+  /* Error — Flag */
+  --md-error: #9a2420;
+  --md-on-error: #ffffff;
+  --md-error-container: #f8dedc;
+  --md-on-error-container: #3a0906;
+
+  /* Surfaces — cool neutral ramp */
+  --md-surface: #f5f6f8;
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #eff1f5;
+  --md-surface-container: #e8eaee;
+  --md-surface-container-high: #e1e5eb;
+  --md-surface-container-highest: #dadee5;
+  --md-on-surface: #1a1c21;
+  --md-on-surface-variant: #565d69;
+  --md-outline: #767d89;
+  --md-outline-variant: #c6cbd4;
+  --md-inverse-surface: #2b2f36;
+  --md-inverse-on-surface: #f0f2f5;
+  --md-scrim: rgba(10, 14, 22, 0.4);
+
+  /* State layer opacities (M3: hover 8%, focus/pressed 10-12%) */
+  --md-state-hover: 0.08;
+  --md-state-focus: 0.1;
+  --md-state-pressed: 0.1;
+
+  /* Elevation — M3 light shadows, tinted with the primary navy */
+  --md-elevation-1: 0 1px 2px rgba(16, 26, 45, 0.26), 0 1px 3px 1px rgba(16, 26, 45, 0.1);
+  --md-elevation-2: 0 1px 2px rgba(16, 26, 45, 0.26), 0 2px 6px 2px rgba(16, 26, 45, 0.1);
+  --md-elevation-3: 0 1px 3px rgba(16, 26, 45, 0.26), 0 4px 8px 3px rgba(16, 26, 45, 0.1);
+
+  /* Shape scale */
+  --md-shape-xs: 4px;
+  --md-shape-sm: 8px;
+  --md-shape-md: 12px;
+  --md-shape-lg: 16px;
+  --md-shape-xl: 28px;
+  --md-shape-full: 999px;
+
+  /* Type roles */
+  --font-body: Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Roboto Condensed", var(--font-body);
+  --font-data: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Legacy aliases — existing markup keeps working, now on Material values. */
+  --nsc-canvas: var(--md-surface);
+  --nsc-ink: var(--md-on-surface);
+  --nsc-secondary: var(--md-on-surface-variant);
+  --nsc-separator: var(--md-outline-variant);
+  --nsc-fill: var(--md-surface-container);
+  --nsc-green: var(--md-primary);
+  --nsc-green-hover: #12294c;
+
+  /* shadcn/base-ui bridge */
+  --background: var(--md-surface);
+  --foreground: var(--md-on-surface);
+  --card: var(--md-surface-container-lowest);
+  --card-foreground: var(--md-on-surface);
+  --popover: var(--md-surface-container-lowest);
+  --popover-foreground: var(--md-on-surface);
+  --primary: var(--md-primary);
+  --primary-foreground: var(--md-on-primary);
+  --secondary: var(--md-secondary-container);
+  --secondary-foreground: var(--md-on-secondary-container);
+  --muted: var(--md-surface-container);
+  --muted-foreground: var(--md-on-surface-variant);
+  --accent: var(--md-secondary-container);
+  --accent-foreground: var(--md-on-secondary-container);
+  --destructive: var(--md-error);
+  --border: var(--md-outline-variant);
+  --input: var(--md-outline);
+  --ring: var(--md-tertiary);
   --radius: 0.75rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #1d1d1f;
-  --sidebar-primary: #0d4720;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eef5f0;
-  --sidebar-accent-foreground: #0d4720;
-  --sidebar-border: rgba(60, 60, 67, 0.12);
-  --sidebar-ring: #0d4720;
-  --chart-1: #0d4720;
-  --chart-2: #86868b;
-  --chart-3: #34c759;
-  --chart-4: #ff9f0a;
-  --chart-5: #007aff;
+  --sidebar: var(--md-surface-container-lowest);
+  --sidebar-foreground: var(--md-on-surface);
+  --sidebar-primary: var(--md-primary);
+  --sidebar-primary-foreground: var(--md-on-primary);
+  --sidebar-accent: var(--md-secondary-container);
+  --sidebar-accent-foreground: var(--md-on-secondary-container);
+  --sidebar-border: var(--md-outline-variant);
+  --sidebar-ring: var(--md-primary);
+  --chart-1: var(--md-primary);
+  --chart-2: var(--md-secondary);
+  --chart-3: var(--md-warning);
+  --chart-4: var(--md-tertiary);
+  --chart-5: var(--md-tertiary);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-mono: var(--font-data);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -103,11 +227,11 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-sm: var(--md-shape-xs);
+  --radius-md: var(--md-shape-sm);
+  --radius-lg: var(--md-shape-md);
+  --radius-xl: var(--md-shape-lg);
+  --radius-2xl: var(--md-shape-xl);
 }
 
 @layer base {
@@ -121,95 +245,457 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family:
-      -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    letter-spacing: -0.01em;
+    font-family: var(--font-body);
+    /* M3 body-medium */
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    letter-spacing: 0.0125em;
   }
 
   /* Light-only form controls — never inherit OS dark text into white fields */
   input,
   select,
   textarea {
-    color: var(--nsc-ink);
-    background-color: #ffffff;
+    color: var(--md-on-surface);
+    background-color: var(--md-surface-container-lowest);
   }
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--nsc-secondary);
+    color: var(--md-on-surface-variant);
     opacity: 1;
+  }
+
+  ::selection {
+    background: var(--md-primary-container);
+    color: var(--md-on-primary-container);
   }
 }
 
-/* Product primitives */
+/* Material type scale + product primitives */
 @layer components {
-  .nsc-page-title {
-    font-size: 1.75rem;
-    line-height: 1.15;
+  /* ---- Type scale ---------------------------------------------------- */
+  .md-headline-small {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--md-on-surface);
+  }
+
+  .md-title-large {
+    font-size: 1.375rem;
+    line-height: 1.75rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--md-on-surface);
+  }
+
+  .md-title-medium {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    font-weight: 500;
+    letter-spacing: 0.009em;
+    color: var(--md-on-surface);
+  }
+
+  .md-title-small {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    letter-spacing: 0.007em;
+    color: var(--md-on-surface);
+  }
+
+  .md-body-large {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    font-weight: 400;
+    letter-spacing: 0.031em;
+  }
+
+  .md-body-medium {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 400;
+    letter-spacing: 0.018em;
+  }
+
+  .md-body-small {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 400;
+    letter-spacing: 0.033em;
+    color: var(--md-on-surface-variant);
+  }
+
+  .md-label-large {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    letter-spacing: 0.007em;
+  }
+
+  .md-label-medium {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.042em;
+  }
+
+  .md-label-small {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.045em;
+  }
+
+  /* Structural voice — condensed, tracked, upper. Labels a region, never prose. */
+  .md-eyebrow {
+    font-family: var(--font-display);
+    font-size: 0.6875rem;
+    line-height: 1rem;
     font-weight: 700;
-    letter-spacing: -0.03em;
-    color: var(--nsc-ink);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--md-on-surface-variant);
+  }
+
+  /* Any value read aloud or typed back: IDs, tokens, dates, counts. */
+  .md-data {
+    font-family: var(--font-data);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Page headers (kept under the old names used across the app) */
+  .nsc-page-title {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    color: var(--md-on-surface);
   }
 
   .nsc-page-sub {
     margin-top: 0.25rem;
-    font-size: 0.9375rem;
-    line-height: 1.4;
-    color: var(--nsc-secondary);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    letter-spacing: 0.018em;
+    color: var(--md-on-surface-variant);
   }
 
   .nsc-section-label {
+    font-family: var(--font-display);
     font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--nsc-secondary);
+    color: var(--md-on-surface-variant);
   }
 
-  .nsc-surface {
-    background: #ffffff;
-    border: 1px solid var(--nsc-separator);
-    border-radius: 1rem;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  /* ---- Elevation ----------------------------------------------------- */
+  .md-elevation-0 {
+    box-shadow: none;
   }
 
-  .nsc-field {
+  .md-elevation-1 {
+    box-shadow: var(--md-elevation-1);
+  }
+
+  .md-elevation-2 {
+    box-shadow: var(--md-elevation-2);
+  }
+
+  .md-elevation-3 {
+    box-shadow: var(--md-elevation-3);
+  }
+
+  /* ---- Surfaces ------------------------------------------------------ */
+  /* M3 elevated card */
+  .nsc-surface,
+  .md-card {
+    background: var(--md-surface-container-lowest);
+    border-radius: var(--md-shape-md);
+    box-shadow: var(--md-elevation-1);
+  }
+
+  /* M3 outlined card — flat, for nested/secondary blocks */
+  .md-card-outlined {
+    background: var(--md-surface-container-lowest);
+    border: 1px solid var(--md-outline-variant);
+    border-radius: var(--md-shape-md);
+  }
+
+  .md-card-filled {
+    background: var(--md-surface-container-low);
+    border-radius: var(--md-shape-md);
+  }
+
+  .md-divider {
+    border: 0;
+    border-top: 1px solid var(--md-outline-variant);
+  }
+
+  /* ---- Outlined text field ------------------------------------------- */
+  .nsc-field,
+  .md-field {
     margin-top: 0.375rem;
     width: 100%;
-    border-radius: 0.625rem;
-    border: 1px solid var(--nsc-separator);
-    background: #ffffff;
-    padding: 0.625rem 0.75rem;
-    font-size: 0.9375rem;
-    color: var(--nsc-ink);
+    border-radius: var(--md-shape-xs);
+    border: 1px solid var(--md-outline);
+    background: var(--md-surface-container-lowest);
+    padding: 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5rem;
+    letter-spacing: 0.031em;
+    color: var(--md-on-surface);
     outline: none;
     transition:
       border-color 0.15s ease,
       box-shadow 0.15s ease;
   }
 
-  .nsc-field:focus {
-    border-color: color-mix(in srgb, var(--nsc-green) 55%, white);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--nsc-green) 18%, transparent);
+  .nsc-field:hover:not(:focus):not(:disabled),
+  .md-field:hover:not(:focus):not(:disabled) {
+    border-color: var(--md-on-surface);
   }
 
-  .nsc-nav-link {
-    border-radius: 999px;
-    padding: 0.375rem 0.75rem;
+  /* Focused = 2px primary outline, drawn inside so nothing reflows */
+  .nsc-field:focus,
+  .md-field:focus {
+    border-color: var(--md-tertiary);
+    box-shadow: inset 0 0 0 1px var(--md-tertiary);
+  }
+
+  .nsc-field:disabled,
+  .md-field:disabled {
+    background: color-mix(in srgb, var(--md-on-surface) 4%, transparent);
+    border-color: color-mix(in srgb, var(--md-on-surface) 12%, transparent);
+    color: color-mix(in srgb, var(--md-on-surface) 38%, transparent);
+  }
+
+  .md-field-label {
+    display: block;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.042em;
+    color: var(--md-on-surface-variant);
+  }
+
+  .md-supporting-text {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    letter-spacing: 0.033em;
+    color: var(--md-on-surface-variant);
+  }
+
+  /* ---- Navigation ----------------------------------------------------- */
+  .nsc-nav-link,
+  .md-nav-link {
+    position: relative;
+    border-radius: var(--md-shape-full);
+    padding: 0.5rem 1rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--nsc-secondary);
+    letter-spacing: 0.007em;
+    color: var(--md-on-surface-variant);
     transition:
       background-color 0.15s ease,
       color 0.15s ease;
   }
 
-  .nsc-nav-link:hover {
-    background: var(--nsc-fill);
-    color: var(--nsc-ink);
+  .nsc-nav-link:hover,
+  .md-nav-link:hover {
+    background: color-mix(
+      in srgb,
+      var(--md-on-surface) calc(var(--md-state-hover) * 100%),
+      transparent
+    );
+    color: var(--md-on-surface);
+  }
+
+  .nsc-nav-link[aria-current="page"],
+  .md-nav-link[aria-current="page"] {
+    background: var(--md-secondary-container);
+    color: var(--md-on-secondary-container);
+  }
+
+  /* ---- Data table ------------------------------------------------------ */
+  .md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    letter-spacing: 0.018em;
+    color: var(--md-on-surface);
+  }
+
+  .md-table thead th {
+    height: 2.75rem;
+    padding: 0 1rem;
+    text-align: left;
+    font-family: var(--font-display);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--md-on-surface-variant);
+    background: transparent;
+    border-bottom: 1px solid var(--md-outline);
+    white-space: nowrap;
+  }
+
+  .md-table tbody td {
+    height: 3.25rem; /* 52dp data rows */
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--md-outline-variant);
+  }
+
+  .md-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* Hover state layer, per M3 */
+  .md-table tbody tr {
+    transition: background-color 0.12s ease;
+  }
+
+  .md-table tbody tr:hover {
+    background: color-mix(
+      in srgb,
+      var(--md-on-surface) calc(var(--md-state-hover) * 100%),
+      transparent
+    );
+  }
+
+  /* ---- Chips (status pills / filter chips) ----------------------------- */
+  .md-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 2rem;
+    padding: 0 0.75rem;
+    border-radius: var(--md-shape-sm);
+    border: 1px solid var(--md-outline);
+    background: transparent;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.007em;
+    color: var(--md-on-surface-variant);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .md-chip:hover {
+    background: color-mix(
+      in srgb,
+      var(--md-on-surface) calc(var(--md-state-hover) * 100%),
+      transparent
+    );
+    color: var(--md-on-surface);
+  }
+
+  .md-chip[aria-pressed="true"],
+  .md-chip[data-selected="true"] {
+    background: var(--md-secondary-container);
+    border-color: transparent;
+    color: var(--md-on-secondary-container);
+  }
+
+  /* ---- FAB -------------------------------------------------------------- */
+  .md-fab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 3.5rem;
+    padding: 0 1.25rem;
+    border-radius: var(--md-shape-lg);
+    background: var(--md-primary-container);
+    color: var(--md-on-primary-container);
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.007em;
+    box-shadow: var(--md-elevation-3);
+    transition:
+      box-shadow 0.15s ease,
+      filter 0.15s ease;
+  }
+
+  .md-fab:hover {
+    filter: brightness(0.97);
+    box-shadow: var(--md-elevation-3);
+  }
+
+  /* ---- Manifest ---------------------------------------------------------
+   * The staff list is a production queue, not a collection of cards: one flat
+   * sheet, hairline rules, no container radius. Reads like the printer's
+   * docket it stands in for, and gives the columns their full width.
+   */
+  .manifest {
+    background: var(--md-surface-container-lowest);
+    border-top: 1px solid var(--md-outline-variant);
+    border-bottom: 1px solid var(--md-outline-variant);
+  }
+
+  .manifest-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+    padding: 0 0 1rem;
+  }
+
+  /* ---- Stage rail --------------------------------------------------------
+   * Four segments — details, photo, approve, print — the same pipeline the
+   * editor steps through. Down a column of rows it reads as texture, and the
+   * eye lands on whichever row breaks the pattern.
+   */
+  .stage-rail {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .stage-seg {
+    width: 14px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--md-outline-variant);
+  }
+
+  .stage-seg[data-state="done"] {
+    background: var(--md-primary);
+  }
+
+  .stage-seg[data-state="current"] {
+    background: var(--md-tertiary);
+  }
+
+  .stage-seg[data-state="blocked"] {
+    background: var(--md-error);
+  }
+
+  /* ---- Pagination -------------------------------------------------------- */
+  .md-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1.5rem;
+    min-height: 3.5rem;
+    padding: 0.5rem 1rem;
+    color: var(--md-on-surface-variant);
   }
 }
+
 
 @media (prefers-reduced-motion: reduce) {
   *,

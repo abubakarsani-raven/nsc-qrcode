@@ -130,7 +130,7 @@ export function PhotoCropper({
         className="flex max-h-[min(92vh,880px)] w-full max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
       >
         <DialogHeader className="border-b px-4 py-3 sm:px-5">
-          <DialogTitle className="tracking-tight text-[var(--nsc-ink)]">
+          <DialogTitle className="md-headline-small">
             Position staff photo
           </DialogTitle>
           <DialogDescription>
@@ -276,7 +276,7 @@ export function PhotoCropper({
 
           <aside className="flex flex-col gap-3 border-t bg-muted/40 p-4 md:border-t-0 md:border-l">
             <div>
-              <p className="text-sm font-medium text-[var(--nsc-ink)]">
+              <p className="md-title-small">
                 Card preview
               </p>
               <p className="text-xs text-muted-foreground">
@@ -350,7 +350,7 @@ export function PhotoCropper({
             <DialogFooter className="mt-auto flex-col gap-2 sm:flex-col">
               <Button
                 type="button"
-                className="w-full bg-[var(--nsc-green)] hover:bg-[var(--nsc-green-hover)]"
+                className="w-full"
                 disabled={!canSave}
                 onClick={handleSave}
               >

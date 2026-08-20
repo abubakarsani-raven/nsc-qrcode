@@ -39,6 +39,7 @@ const createSchema = z.object({
       "BACK_BAR_GREEN",
     ])
     .optional(),
+  cardTypeScale: z.string().nullable().optional(),
 });
 
 export async function GET(req: NextRequest) {

@@ -29,6 +29,7 @@ function toInput(s: {
   photoOriginalKey: string | null;
   photoCrop: string | null;
   photoPreviewKey: string | null;
+  cardTypeScale: string | null;
 }): StaffCardInput {
   return {
     ...s,

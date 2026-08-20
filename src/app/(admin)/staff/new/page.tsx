@@ -10,7 +10,7 @@ export default function NewStaffPage() {
           Create a draft record, then add a photo before approval.
         </p>
       </div>
-      <Suspense fallback={<div className="nsc-surface h-40 animate-pulse" />}>
+      <Suspense fallback={<div className="md-card h-40 animate-pulse" />}>
         <StaffEditor />
       </Suspense>
     </div>

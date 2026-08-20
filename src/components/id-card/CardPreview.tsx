@@ -9,9 +9,15 @@ import {
 import { layoutName } from "@/lib/id-card/name-layout";
 import {
   CARD_THEMES,
+  ID_TRACKING_EM,
   NAME_TOP_NUDGE_PT,
   TITLE_RULE,
 } from "@/lib/id-card/theme";
+import {
+  BASE_PT,
+  DEFAULT_TYPE_SCALE,
+  type CardTypeScale,
+} from "@/lib/id-card/type-scale";
 import { publicVerifyUrl } from "@/lib/qr";
 import { roundedQrDataUrl } from "@/lib/qr-render";
 import { useEffect, useMemo, useState } from "react";
@@ -28,6 +34,8 @@ type Props = {
   qrToken: string;
   photoUrl?: string | null;
   scale?: number;
+  /** Per-record type sizing for name / designation / ID line. */
+  typeScale?: CardTypeScale;
 };
 
 export function CardPreview(props: Props) {
@@ -37,10 +45,13 @@ export function CardPreview(props: Props) {
   const front = FRONT_TEMPLATES[props.frontTemplate];
   const theme = CARD_THEMES[front.colorMatch];
   const given = [props.firstName, props.middleName].filter(Boolean).join(" ");
+  const type = props.typeScale ?? DEFAULT_TYPE_SCALE;
   const name = useMemo(
-    () => layoutName(props.lastName, given, props.frontTemplate),
-    [props.lastName, given, props.frontTemplate],
+    () => layoutName(props.lastName, given, props.frontTemplate, type.name),
+    [props.lastName, given, props.frontTemplate, type.name],
   );
+  const designationPt = BASE_PT.designation * type.designation;
+  const idPt = BASE_PT.idNo * type.idNo;
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   useEffect(() => {
@@ -94,19 +105,27 @@ export function CardPreview(props: Props) {
     zIndex: 2,
   };
 
-  const ruleY1 =
-    (front.designation.y + front.designation.h + TITLE_RULE.firstOffsetPt) *
-    scale;
-  const ruleY2 = ruleY1 + TITLE_RULE.gapPt * scale;
-  const ruleX =
-    (front.contentAxisX - TITLE_RULE.widthPt / 2) * scale;
+  const ruleY =
+    (front.designation.y + front.designation.h + TITLE_RULE.offsetPt) * scale;
+  const ruleX = (front.contentAxisX - TITLE_RULE.widthPt / 2) * scale;
   const ruleW = TITLE_RULE.widthPt * scale;
   const ruleH = Math.max(1, TITLE_RULE.thicknessPt * scale);
+
+  const idLabel = `ID NO. ${props.idNumber}`;
+  const idFontPx = idPt * scale;
+  const idTrackingPx = idTracking(idLabel, idFontPx, front.idNo.w * scale);
 
   return (
     <div
       className="relative overflow-hidden bg-white shadow-lg"
-      style={{ width, height, fontFamily: "Poppins, sans-serif" }}
+      // Card typography is Poppins at its own metrics — never inherit the UI
+      // font stack or its Material letter-spacing.
+      style={{
+        width,
+        height,
+        fontFamily: "Poppins, sans-serif",
+        letterSpacing: "normal",
+      }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -160,7 +179,7 @@ export function CardPreview(props: Props) {
           left: front.designation.x * scale,
           top: front.designation.y * scale,
           width: front.designation.w * scale,
-          fontSize: 6 * scale,
+          fontSize: designationPt * scale,
           letterSpacing: "normal",
           color: theme.designation,
           zIndex: 3,
@@ -168,23 +187,12 @@ export function CardPreview(props: Props) {
       >
         {props.designation}
       </div>
-      {/* Double rule under designation (replaces single/ghost lines in template art) */}
+      {/* Single rule under designation (replaces the erased line in template art) */}
       <div
         className="absolute"
         style={{
           left: ruleX,
-          top: ruleY1,
-          width: ruleW,
-          height: ruleH,
-          backgroundColor: theme.rule,
-          zIndex: 3,
-        }}
-      />
-      <div
-        className="absolute"
-        style={{
-          left: ruleX,
-          top: ruleY2,
+          top: ruleY,
           width: ruleW,
           height: ruleH,
           backgroundColor: theme.rule,
@@ -194,21 +202,20 @@ export function CardPreview(props: Props) {
       <div
         className="absolute whitespace-nowrap text-center font-bold"
         style={{
-          left: front.idNo.x * scale,
+          left: (front.contentAxisX - front.idNo.w / 2) * scale,
           top: front.idNo.y * scale,
           width: front.idNo.w * scale,
-          fontSize: 6 * scale,
-          letterSpacing: trackingPx(
-            `ID NO. ${props.idNumber}`,
-            6 * scale,
-            front.idNo.w * scale,
-            0.58,
-          ),
+          fontSize: idFontPx,
+          letterSpacing: idTrackingPx,
           color: theme.idNo,
           zIndex: 3,
         }}
       >
-        ID NO. {props.idNumber}
+        {/* letter-spacing also trails the last glyph — pull it back so the
+            centred line sits on the same axis the PDF stamps it on. */}
+        <span style={{ marginRight: -idTrackingPx }}>
+          ID NO. {props.idNumber}
+        </span>
       </div>
       {qrDataUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -223,17 +230,15 @@ export function CardPreview(props: Props) {
   );
 }
 
-/** Open tracking that still fits on one line (sample ID/title style). */
-function trackingPx(
-  text: string,
-  fontSizePx: number,
-  maxWidthPx: number,
-  avgGlyphEm: number,
-) {
+/** Sample tracking on the ID line, tightened only if the number would overflow. */
+function idTracking(text: string, fontSizePx: number, maxWidthPx: number) {
+  if (text.length < 2) return 0;
   let natural = 0;
   for (const ch of text) {
-    natural += ch === " " ? fontSizePx * 0.28 : fontSizePx * avgGlyphEm;
+    natural += ch === " " ? fontSizePx * 0.28 : fontSizePx * 0.58;
   }
-  if (text.length < 2 || natural >= maxWidthPx) return 0;
-  return (maxWidthPx - natural) / (text.length - 1);
+  const spacing = ID_TRACKING_EM * fontSizePx;
+  const gaps = text.length - 1;
+  if (natural + spacing * gaps <= maxWidthPx) return spacing;
+  return Math.max(0, (maxWidthPx - natural) / gaps);
 }

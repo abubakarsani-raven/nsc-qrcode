@@ -51,6 +51,8 @@ export function layoutName(
   surname: string,
   given: string,
   front: FrontTemplateId,
+  /** Operator nudge applied to the fitted size (see lib/id-card/type-scale). */
+  scale = 1,
 ): NameLayout {
   const slots = FRONT_TEMPLATES[front];
   const maxW1 = slots.nameLine1.w;
@@ -87,8 +89,8 @@ export function layoutName(
         surname: sur,
         line1Given,
         line2,
-        fontSizePt: fontSize,
-        leadingPt: LEADING,
+        fontSizePt: fontSize * scale,
+        leadingPt: LEADING * scale,
         given: giv,
       };
     }
@@ -99,8 +101,8 @@ export function layoutName(
     surname: sur,
     line1Given: tokens[0] ?? "",
     line2: tokens.slice(1).join(" "),
-    fontSizePt: MIN_PT,
-    leadingPt: LEADING,
+    fontSizePt: MIN_PT * scale,
+    leadingPt: LEADING * scale,
     given: giv,
   };
 }

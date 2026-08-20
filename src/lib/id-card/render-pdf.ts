@@ -2,6 +2,7 @@ import {
   PDFDocument,
   rgb,
   degrees,
+  setCharacterSpacing,
   type PDFPage,
   type PDFFont,
   type RGB,
@@ -17,6 +18,7 @@ import { layoutName } from "@/lib/id-card/name-layout";
 import { embedCardFonts } from "@/lib/id-card/fonts";
 import {
   CARD_THEMES,
+  ID_TRACKING_EM,
   NAME_TOP_NUDGE_PT,
   TITLE_RULE,
   type CardColorMatch,
@@ -25,6 +27,7 @@ import {
   renderBackCardPng,
   renderFrontCardPng,
 } from "@/lib/id-card/render-preview-image";
+import { BASE_PT, parseTypeScale } from "@/lib/id-card/type-scale";
 
 export type StaffCardInput = {
   id: string;
@@ -39,6 +42,8 @@ export type StaffCardInput = {
   photoOriginalKey?: string | null;
   photoCrop?: string | null;
   photoPreviewKey?: string | null;
+  /** JSON type-scale override; defaults when absent. */
+  cardTypeScale?: string | null;
 };
 
 function hexRgb(hex: string) {
@@ -65,16 +70,19 @@ function baselineFromTop(rect: Rect, size: number, pageHeight = PAGE.height) {
   return pageHeight - rect.y - size * 0.82;
 }
 
-function fitCharacterSpacing(
+/** Sample tracking on the ID line, tightened only if the number would overflow. */
+function idCharacterSpacing(
   text: string,
   font: PDFFont,
   size: number,
-  targetWidth: number,
+  maxWidth: number,
 ) {
   if (text.length < 2) return 0;
   const natural = font.widthOfTextAtSize(text, size);
-  if (natural >= targetWidth) return 0;
-  return (targetWidth - natural) / (text.length - 1);
+  const spacing = ID_TRACKING_EM * size;
+  const gaps = text.length - 1;
+  if (natural + spacing * gaps <= maxWidth) return spacing;
+  return Math.max(0, (maxWidth - natural) / gaps);
 }
 
 function drawMixedNameLine(
@@ -119,14 +127,10 @@ function drawCenteredText(
   const cx = axisX ?? rect.x + rect.w / 2;
   const x = cx - tw / 2;
   const y = baselineFromTop(rect, size);
-  page.drawText(text, {
-    x,
-    y,
-    size,
-    font,
-    color,
-    ...(spacing ? { characterSpacing: spacing } : {}),
-  } as Parameters<PDFPage["drawText"]>[1]);
+  // `drawText` has no tracking option — set Tc on the page state around it.
+  if (spacing) page.pushOperators(setCharacterSpacing(spacing));
+  page.drawText(text, { x, y, size, font, color });
+  if (spacing) page.pushOperators(setCharacterSpacing(0));
 }
 
 /** Stamp name / designation / ID with embedded Poppins (works on Vercel). */
@@ -139,7 +143,10 @@ function drawFrontText(
   const front = FRONT_TEMPLATES[staff.frontTemplate];
   const colors = themeColors(front.colorMatch);
   const given = [staff.firstName, staff.middleName].filter(Boolean).join(" ");
-  const name = layoutName(staff.lastName, given, staff.frontTemplate);
+  const type = parseTypeScale(staff.cardTypeScale);
+  const name = layoutName(staff.lastName, given, staff.frontTemplate, type.name);
+  const designationPt = BASE_PT.designation * type.designation;
+  const idPt = BASE_PT.idNo * type.idNo;
   const axis = front.contentAxisX;
 
   const nameLine = { ...front.nameLine1, y: front.nameLine1.y + NAME_TOP_NUDGE_PT };
@@ -177,26 +184,23 @@ function drawFrontText(
     designation,
     front.designation,
     regular,
-    6,
+    designationPt,
     colors.designation,
     axis,
   );
 
-  // Double rule under designation
+  // Single rule under designation
   const ruleYTop =
     PAGE.height -
-    (front.designation.y + front.designation.h + TITLE_RULE.firstOffsetPt);
-  const ruleX = axis - TITLE_RULE.widthPt / 2;
-  for (const dy of [0, TITLE_RULE.gapPt]) {
-    page.drawRectangle({
-      x: ruleX,
-      y: ruleYTop - dy - TITLE_RULE.thicknessPt,
-      width: TITLE_RULE.widthPt,
-      height: TITLE_RULE.thicknessPt,
-      color: colors.rule,
-      borderWidth: 0,
-    });
-  }
+    (front.designation.y + front.designation.h + TITLE_RULE.offsetPt);
+  page.drawRectangle({
+    x: axis - TITLE_RULE.widthPt / 2,
+    y: ruleYTop - TITLE_RULE.thicknessPt,
+    width: TITLE_RULE.widthPt,
+    height: TITLE_RULE.thicknessPt,
+    color: colors.rule,
+    borderWidth: 0,
+  });
 
   const idLabel = `ID NO. ${staff.idNumber}`;
   drawCenteredText(
@@ -204,11 +208,11 @@ function drawFrontText(
     idLabel,
     front.idNo,
     bold,
-    6,
+    idPt,
     colors.idNo,
     axis,
     {
-      characterSpacing: fitCharacterSpacing(idLabel, bold, 6, front.idNo.w),
+      characterSpacing: idCharacterSpacing(idLabel, bold, idPt, front.idNo.w),
     },
   );
 }

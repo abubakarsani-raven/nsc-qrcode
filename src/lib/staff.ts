@@ -60,6 +60,7 @@ export function requiresReapproval(
     "photoCrop",
     "frontTemplate",
     "backTemplate",
+    "cardTypeScale",
     "officeLine",
     "emergencyContactName",
     "emergencyContactPhone",

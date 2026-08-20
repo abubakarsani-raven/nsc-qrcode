@@ -56,6 +56,7 @@ const ROLE_PERMS = {
   suspend: ["APPROVER", "ADMIN"] as Role[],
   regenerateQr: ["APPROVER", "ADMIN"] as Role[],
   manageUsers: ["ADMIN"] as Role[],
+  clearAudit: ["ADMIN"] as Role[],
 };
 
 export function can(role: Role, action: keyof typeof ROLE_PERMS) {

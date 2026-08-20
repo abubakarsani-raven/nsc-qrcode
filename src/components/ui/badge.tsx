@@ -8,12 +8,16 @@ type BadgeProps = {
   className?: string;
 };
 
+/** M3 tonal status chip — container colour + its matching "on" colour. */
 const variantStyles: Record<BadgeVariant, string> = {
-  default: "bg-[#f0f0f2] text-[var(--nsc-ink)]",
-  success: "bg-[#e8f8ee] text-[#0d4720]",
-  warning: "bg-[#fff4e5] text-[#9a5b00]",
-  error: "bg-[#ffeceb] text-[#c41e16]",
-  info: "bg-[#e8f1ff] text-[#0040dd]",
+  default:
+    "bg-[var(--md-surface-container-high)] text-[var(--md-on-surface-variant)]",
+  success:
+    "bg-[var(--md-primary-container)] text-[var(--md-on-primary-container)]",
+  warning:
+    "bg-[var(--md-warning-container)] text-[var(--md-on-warning-container)]",
+  error: "bg-[var(--md-error-container)] text-[var(--md-on-error-container)]",
+  info: "bg-[var(--md-secondary-container)] text-[var(--md-on-secondary-container)]",
 };
 
 export function Badge({
@@ -24,8 +28,8 @@ export function Badge({
   return (
     <span
       className={`
-        inline-flex items-center rounded-full px-2 py-0.5
-        text-[11px] font-semibold tracking-[0.01em]
+        inline-flex h-6 items-center rounded-[var(--md-shape-sm)] px-2
+        text-xs font-medium tracking-[0.042em]
         ${variantStyles[variant]}
         ${className}
       `}

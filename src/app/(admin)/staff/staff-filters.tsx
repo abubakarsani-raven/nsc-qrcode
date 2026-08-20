@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Label } from "@/components/ui/label";
@@ -84,26 +85,34 @@ export function StaffFilters() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-3">
       <form
-        className="nsc-surface flex flex-wrap items-end gap-3 p-4"
+        className="manifest-toolbar"
         onSubmit={(e) => {
           e.preventDefault();
           apply({ q: q.trim() || null });
         }}
       >
-        <div className="min-w-[180px] flex-1 space-y-1.5">
-          <Label htmlFor="staff-search">Search</Label>
-          <input
-            id="staff-search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="nsc-field"
-            placeholder="Name or ID"
-          />
+        <div className="min-w-[220px] flex-1">
+          <Label htmlFor="staff-search" className="md-field-label">
+            Search
+          </Label>
+          <div className="relative">
+            <SearchIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-[var(--md-on-surface-variant)]"
+            />
+            <input
+              id="staff-search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="md-field pl-11"
+              placeholder="Name or ID"
+            />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label>Status</Label>
+        <div>
+          <Label className="md-field-label">Status</Label>
           <Select
             value={STATUS_ITEMS[status] ? status : "ALL"}
             onValueChange={(value) => {
@@ -111,7 +120,7 @@ export function StaffFilters() {
             }}
             items={STATUS_ITEMS}
           >
-            <SelectTrigger className="min-w-40">
+            <SelectTrigger className="mt-1.5 min-w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -125,8 +134,8 @@ export function StaffFilters() {
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
-          <Label>Approval</Label>
+        <div>
+          <Label className="md-field-label">Approval</Label>
           <Select
             value={APPROVAL_ITEMS[approval] ? approval : "ALL"}
             onValueChange={(value) => {
@@ -134,7 +143,7 @@ export function StaffFilters() {
             }}
             items={APPROVAL_ITEMS}
           >
-            <SelectTrigger className="min-w-40">
+            <SelectTrigger className="mt-1.5 min-w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -157,15 +166,20 @@ export function StaffFilters() {
               key={chip.key}
               type="button"
               onClick={() => apply(chip.clear)}
-              className="rounded-full bg-[var(--nsc-fill)] px-3 py-1 text-[12px] font-medium text-[var(--nsc-ink)] hover:bg-[rgba(120,120,128,0.2)]"
+              className="md-chip"
+              data-selected="true"
+              aria-label={`Remove filter ${chip.label}`}
             >
-              {chip.label} ×
+              {chip.label}
+              <span aria-hidden="true" className="text-base leading-none">
+                ×
+              </span>
             </button>
           ))}
           <button
             type="button"
             onClick={() => router.push("/staff")}
-            className="text-[12px] font-medium text-[var(--nsc-green)] hover:underline"
+            className="md-label-large px-2 text-[var(--md-primary)] hover:underline"
           >
             Clear all
           </button>
@@ -175,21 +189,17 @@ export function StaffFilters() {
       <div className="flex flex-wrap gap-2">
         <Link
           href="/staff?missingPhoto=1"
-          className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
-            missingPhoto
-              ? "bg-[var(--nsc-ink)] text-white"
-              : "bg-white text-[var(--nsc-ink)] ring-1 ring-[var(--nsc-separator)] hover:bg-[#fafafa]"
-          }`}
+          className="md-chip"
+          data-selected={missingPhoto ? "true" : "false"}
         >
           Needs photo
         </Link>
         <Link
           href="/staff?approvalState=PENDING"
-          className={`rounded-full px-3 py-1.5 text-[12px] font-semibold ${
-            approval === "PENDING" && !missingPhoto
-              ? "bg-[var(--nsc-ink)] text-white"
-              : "bg-white text-[var(--nsc-ink)] ring-1 ring-[var(--nsc-separator)] hover:bg-[#fafafa]"
-          }`}
+          className="md-chip"
+          data-selected={
+            approval === "PENDING" && !missingPhoto ? "true" : "false"
+          }
         >
           Needs approval
         </Link>

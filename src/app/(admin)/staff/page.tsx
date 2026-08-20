@@ -6,6 +6,10 @@ import { StaffFilters } from "./staff-filters";
 import { StaffBulkActions } from "./staff-bulk-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/staff/pagination";
+import { StageRail, stageStates } from "@/components/staff/stage-rail";
+
+const PAGE_SIZE = 25;
 
 type Sp = Promise<{
   q?: string;
@@ -13,6 +17,7 @@ type Sp = Promise<{
   approvalState?: string;
   missingPhoto?: string;
   frontTemplate?: string;
+  page?: string;
 }>;
 
 export default async function StaffPage({ searchParams }: { searchParams: Sp }) {
@@ -33,31 +38,56 @@ export default async function StaffPage({ searchParams }: { searchParams: Sp }) 
     ];
   }
 
-  const [staff, missingPhotoCount, pendingCount] = await Promise.all([
+  const [total, missingPhotoCount, pendingCount] = await Promise.all([
+    prisma.staff.count({ where }),
+    prisma.staff.count({ where: { photoPreviewKey: null } }),
+    prisma.staff.count({ where: { approvalState: "PENDING" } }),
+  ]);
+
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = Math.min(
+    Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1),
+    lastPage,
+  );
+
+  const [staff, matchingIds] = await Promise.all([
     prisma.staff.findMany({
       where,
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
     }),
-    prisma.staff.count({ where: { photoPreviewKey: null } }),
-    prisma.staff.count({ where: { approvalState: "PENDING" } }),
+    // Exports cover everything the filters match, not just the visible page.
+    prisma.staff.findMany({
+      where,
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      select: { id: true },
+    }),
   ]);
 
   const hasFilters = Boolean(
     sp.q || sp.status || sp.approvalState || sp.missingPhoto || sp.frontTemplate,
   );
 
+  // Every filter except the page number, so the steps keep the current view.
+  const baseQuery = new URLSearchParams(
+    Object.entries(sp).filter(
+      ([k, v]) => k !== "page" && typeof v === "string" && v,
+    ) as [string, string][],
+  ).toString();
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="nsc-page-title">Staff</h1>
+          <p className="md-eyebrow">Card production</p>
+          <h1 className="nsc-page-title mt-1">Staff</h1>
           <p className="nsc-page-sub">
-            <span className="font-medium text-[var(--nsc-ink)]">{staff.length}</span>
-            {" "}
-            record{staff.length === 1 ? "" : "s"}
+            <span className="md-data text-[var(--md-on-surface)]">{total}</span>{" "}
+            record{total === 1 ? "" : "s"}
             {sp.missingPhoto === "1" ? " missing photos" : ""}
             {missingPhotoCount > 0 || pendingCount > 0 ? (
-              <span className="text-[var(--nsc-secondary)]">
+              <span>
                 {" · "}
                 {missingPhotoCount > 0
                   ? `${missingPhotoCount} need photo`
@@ -68,181 +98,174 @@ export default async function StaffPage({ searchParams }: { searchParams: Sp }) 
             ) : null}
           </p>
         </div>
-        <Link href="/staff/new">
-          <Button className="h-10 rounded-full bg-[var(--nsc-green)] px-5 hover:bg-[var(--nsc-green-hover)]">
-            Add staff
-          </Button>
+        <Link href="/staff/new" className="shrink-0">
+          <Button>Add staff</Button>
         </Link>
-      </div>
+      </header>
 
-      <Suspense fallback={<div className="nsc-surface h-24 animate-pulse" />}>
-        <StaffFilters />
-      </Suspense>
-      <StaffBulkActions
-        staff={staff.map((s) => ({ id: s.id, label: fullName(s) }))}
-      />
+      <div>
+        <Suspense fallback={<div className="h-24" />}>
+          <StaffFilters />
+        </Suspense>
 
-      <div className="nsc-surface hidden overflow-hidden md:block">
-        <table className="w-full min-w-max text-[13px]">
-          <thead>
-            <tr className="border-b border-[var(--nsc-separator)] bg-[#fafafa]">
-              {[
-                "Name",
-                "ID",
-                "Designation",
-                "Status",
-                "Approval",
-                "Photo",
-                "Template",
-                "",
-              ].map((h) => (
-                <th
-                  key={h || "action"}
-                  className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--nsc-secondary)]"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {staff.map((s) => (
-              <tr
-                key={s.id}
-                className="border-b border-[var(--nsc-separator)] last:border-0 transition-colors hover:bg-[#fafafa]"
-              >
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[var(--nsc-fill)]">
-                      {s.photoPreviewKey ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`/api/photos/${s.id}/${s.photoPreviewKey}`}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : null}
-                    </div>
-                    <div>
-                      <Link
-                        href={`/staff/${s.id}`}
-                        className="font-medium text-[var(--nsc-ink)] hover:text-[var(--nsc-green)]"
-                      >
-                        {fullName(s)}
-                      </Link>
-                      {s.hasPendingEdits ? (
-                        <Badge variant="warning" className="ml-2">
-                          Edits pending
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5 font-mono text-[12px] text-[var(--nsc-secondary)]">
-                  {s.idNumber}
-                </td>
-                <td className="px-5 py-3.5 text-[var(--nsc-ink)]/80">
-                  {s.designation}
-                </td>
-                <td className="px-5 py-3.5">
-                  <Badge variant={s.status === "ACTIVE" ? "success" : "error"}>
-                    {s.status === "ACTIVE" ? "Active" : "Suspended"}
-                  </Badge>
-                </td>
-                <td className="px-5 py-3.5">
-                  <Badge
-                    variant={
-                      s.approvalState === "APPROVED" ? "success" : "warning"
-                    }
-                  >
-                    {s.approvalState === "APPROVED" ? "Approved" : "Pending"}
-                  </Badge>
-                </td>
-                <td className="px-5 py-3.5">
-                  <Badge variant={s.photoPreviewKey ? "success" : "warning"}>
-                    {s.photoPreviewKey ? "Ready" : "No photo"}
-                  </Badge>
-                </td>
-                <td className="px-5 py-3.5 text-[var(--nsc-secondary)]">
-                  {s.frontTemplate.replace(/_/g, " ").toLowerCase()}
-                </td>
-                <td className="px-5 py-3.5 text-right">
-                  <Link href={`/staff/${s.id}`}>
-                    <Button variant="ghost" size="sm">
-                      Open
-                    </Button>
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {staff.length === 0 ? (
-          <EmptyState hasFilters={hasFilters} />
-        ) : null}
-      </div>
+        <StaffBulkActions ids={matchingIds.map((s) => s.id)} />
 
-      <div className="space-y-3 md:hidden">
-        {staff.length === 0 ? (
-          <div className="nsc-surface">
-            <EmptyState hasFilters={hasFilters} />
+        <div className="manifest hidden md:block">
+          <div className="overflow-x-auto">
+            <table className="md-table min-w-max">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th>Name</th>
+                  <th>ID</th>
+                  <th>Designation</th>
+                  <th>State</th>
+                  <th>Template</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {staff.map((s) => {
+                  const states = stageStates({
+                    hasPhoto: Boolean(s.photoPreviewKey),
+                    approved: s.approvalState === "APPROVED",
+                    suspended: s.status === "SUSPENDED",
+                    printedAt: s.lastPrintedAt,
+                  });
+                  return (
+                    <tr key={s.id}>
+                      <td className="w-px pr-2">
+                        <StageRail states={states} />
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[var(--md-surface-container-high)]">
+                            {s.photoPreviewKey ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={`/api/photos/${s.id}/${s.photoPreviewKey}`}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : null}
+                          </div>
+                          <Link
+                            href={`/staff/${s.id}`}
+                            className="md-label-large text-[var(--md-on-surface)] hover:text-[var(--md-tertiary)]"
+                          >
+                            {fullName(s)}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="md-data text-[var(--md-on-surface-variant)]">
+                        {s.idNumber}
+                      </td>
+                      <td className="text-[var(--md-on-surface-variant)]">
+                        {s.designation}
+                      </td>
+                      <td>
+                        {/* Only the exceptions carry colour. */}
+                        {s.status === "SUSPENDED" ? (
+                          <Badge variant="error">Suspended</Badge>
+                        ) : s.hasPendingEdits ? (
+                          <Badge variant="warning">Edits pending</Badge>
+                        ) : !s.photoPreviewKey ? (
+                          <Badge variant="warning">No photo</Badge>
+                        ) : s.approvalState !== "APPROVED" ? (
+                          <Badge variant="warning">Pending</Badge>
+                        ) : (
+                          <span className="md-body-small">Ready</span>
+                        )}
+                      </td>
+                      <td className="text-[var(--md-on-surface-variant)] capitalize">
+                        {s.frontTemplate.replace(/_/g, " ").toLowerCase()}
+                      </td>
+                      <td className="text-right">
+                        <Link href={`/staff/${s.id}`}>
+                          <Button variant="ghost" size="sm">
+                            Open
+                          </Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        ) : (
-          staff.map((s) => (
-            <Link key={s.id} href={`/staff/${s.id}`} className="block">
-              <article className="nsc-surface p-4 transition-transform active:scale-[0.99]">
-                <div className="flex items-start gap-3">
-                  <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-[var(--nsc-fill)]">
-                    {s.photoPreviewKey ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={`/api/photos/${s.id}/${s.photoPreviewKey}`}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[15px] font-semibold tracking-tight">
-                          {fullName(s)}
-                        </p>
-                        <p className="mt-0.5 font-mono text-[12px] text-[var(--nsc-secondary)]">
-                          {s.idNumber}
-                        </p>
+          {total === 0 ? (
+            <EmptyState hasFilters={hasFilters} />
+          ) : (
+            <Pagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={total}
+              baseQuery={baseQuery}
+            />
+          )}
+        </div>
+
+        <div className="space-y-3 md:hidden">
+          {total === 0 ? (
+            <div className="md-card">
+              <EmptyState hasFilters={hasFilters} />
+            </div>
+          ) : (
+            <>
+              {staff.map((s) => {
+                const states = stageStates({
+                  hasPhoto: Boolean(s.photoPreviewKey),
+                  approved: s.approvalState === "APPROVED",
+                  suspended: s.status === "SUSPENDED",
+                  printedAt: s.lastPrintedAt,
+                });
+                return (
+                  <Link key={s.id} href={`/staff/${s.id}`} className="block">
+                    <article className="md-card p-4 transition-shadow active:shadow-[var(--md-elevation-2)]">
+                      <div className="flex items-start gap-3">
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-[var(--md-surface-container-high)]">
+                          {s.photoPreviewKey ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={`/api/photos/${s.id}/${s.photoPreviewKey}`}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : null}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="md-title-medium">{fullName(s)}</p>
+                          <p className="md-data mt-0.5 text-[var(--md-on-surface-variant)]">
+                            {s.idNumber}
+                          </p>
+                          <p className="md-body-medium mt-2 text-[var(--md-on-surface-variant)]">
+                            {s.designation}
+                          </p>
+                          <div className="mt-3 flex items-center gap-3">
+                            <StageRail states={states} />
+                            {s.status === "SUSPENDED" ? (
+                              <Badge variant="error">Suspended</Badge>
+                            ) : !s.photoPreviewKey ? (
+                              <Badge variant="warning">No photo</Badge>
+                            ) : s.approvalState !== "APPROVED" ? (
+                              <Badge variant="warning">Pending</Badge>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
-                      <Badge
-                        variant={s.status === "ACTIVE" ? "success" : "error"}
-                      >
-                        {s.status === "ACTIVE" ? "Active" : "Suspended"}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-[13px] text-[var(--nsc-ink)]/80">
-                      {s.designation}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge
-                        variant={
-                          s.approvalState === "APPROVED" ? "success" : "warning"
-                        }
-                      >
-                        {s.approvalState === "APPROVED"
-                          ? "Approved"
-                          : "Pending"}
-                      </Badge>
-                      <Badge
-                        variant={s.photoPreviewKey ? "success" : "warning"}
-                      >
-                        {s.photoPreviewKey ? "Photo ready" : "No photo"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              </article>
-            </Link>
-          ))
-        )}
+                    </article>
+                  </Link>
+                );
+              })}
+              <Pagination
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={total}
+                baseQuery={baseQuery}
+              />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -250,33 +273,27 @@ export default async function StaffPage({ searchParams }: { searchParams: Sp }) 
 
 function EmptyState({ hasFilters }: { hasFilters: boolean }) {
   return (
-    <div className="px-5 py-14 text-center">
-      <p className="text-[15px] font-medium text-[var(--nsc-ink)]">
+    <div className="px-4 py-14 text-center">
+      <p className="md-title-medium">
         {hasFilters ? "No staff match these filters" : "No staff records yet"}
       </p>
-      <p className="mt-1 text-[13px] text-[var(--nsc-secondary)]">
+      <p className="md-body-medium mt-1 text-[var(--md-on-surface-variant)]">
         {hasFilters
           ? "Clear filters or try a different search."
           : "Add a person or import a spreadsheet to get started."}
       </p>
-      <div className="mt-5 flex flex-wrap justify-center gap-2">
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
         {hasFilters ? (
           <Link href="/staff">
-            <Button variant="outline" className="rounded-full">
-              Clear filters
-            </Button>
+            <Button variant="outline">Clear filters</Button>
           </Link>
         ) : null}
         <Link href="/staff/new">
-          <Button className="rounded-full bg-[var(--nsc-green)] hover:bg-[var(--nsc-green-hover)]">
-            Add staff
-          </Button>
+          <Button>Add staff</Button>
         </Link>
         {!hasFilters ? (
           <Link href="/import">
-            <Button variant="outline" className="rounded-full">
-              Import
-            </Button>
+            <Button variant="outline">Import</Button>
           </Link>
         ) : null}
       </div>

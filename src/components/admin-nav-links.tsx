@@ -26,11 +26,7 @@ export function AdminNavLinks({ className = "" }: { className?: string }) {
           <Link
             key={link.href}
             href={link.href}
-            className={`nsc-nav-link whitespace-nowrap ${
-              active
-                ? "bg-[var(--nsc-fill)] text-[var(--nsc-ink)]"
-                : ""
-            }`}
+            className="md-nav-link whitespace-nowrap"
             aria-current={active ? "page" : undefined}
           >
             {link.label}

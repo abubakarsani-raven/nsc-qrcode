@@ -60,3 +60,6 @@ public/Screenshot*.png
 
 *.bak
 *.bak2
+
+# python bytecode from scripts/
+__pycache__/

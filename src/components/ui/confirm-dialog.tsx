@@ -66,11 +66,12 @@ export function ConfirmDialog({
         </DialogHeader>
         {requireText ? (
           <div className="space-y-1.5">
-            <label
-              htmlFor="confirm-type"
-              className="text-[13px] text-[var(--nsc-secondary)]"
-            >
-              Type <span className="font-mono font-semibold text-[var(--nsc-ink)]">{requireText}</span> to confirm
+            <label htmlFor="confirm-type" className="md-field-label">
+              Type{" "}
+              <span className="font-mono text-[var(--md-on-surface)]">
+                {requireText}
+              </span>{" "}
+              to confirm
             </label>
             <input
               id="confirm-type"
@@ -85,7 +86,7 @@ export function ConfirmDialog({
         <DialogFooter>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             disabled={busy}
             onClick={() => onOpenChange(false)}
           >
@@ -93,13 +94,9 @@ export function ConfirmDialog({
           </Button>
           <Button
             type="button"
+            variant={destructive ? "destructive" : "default"}
             disabled={!canConfirm || busy}
             onClick={handleConfirm}
-            className={
-              destructive
-                ? "bg-[#ff3b30] text-white hover:bg-[#d70015]"
-                : "bg-[var(--nsc-green)] hover:bg-[var(--nsc-green-hover)]"
-            }
           >
             {busy ? "Working…" : confirmLabel}
           </Button>

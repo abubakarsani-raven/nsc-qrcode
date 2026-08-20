@@ -34,8 +34,10 @@ export function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
-      <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
+      <div>
+        <Label htmlFor="email" className="md-field-label">
+          Email
+        </Label>
         <input
           id="email"
           type="email"
@@ -46,8 +48,10 @@ export function LoginForm() {
           className="nsc-field"
         />
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="password">Password</Label>
+      <div>
+        <Label htmlFor="password" className="md-field-label">
+          Password
+        </Label>
         <input
           id="password"
           type="password"
@@ -59,15 +63,11 @@ export function LoginForm() {
         />
       </div>
       {error ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+        <p className="md-body-medium rounded-[var(--md-shape-xs)] bg-[var(--md-error-container)] px-3 py-2 text-[var(--md-on-error-container)]">
           {error}
         </p>
       ) : null}
-      <Button
-        type="submit"
-        disabled={loading}
-        className="h-11 w-full rounded-xl bg-[var(--nsc-green)] text-[15px] hover:bg-[var(--nsc-green-hover)]"
-      >
+      <Button type="submit" disabled={loading} className="w-full">
         {loading ? "Signing in…" : "Sign in"}
       </Button>
     </form>

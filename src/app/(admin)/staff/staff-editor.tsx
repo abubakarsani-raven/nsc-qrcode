@@ -4,6 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/id-card/CardPreview";
+import { TypeScaleControl } from "@/components/id-card/type-scale-control";
+import { layoutName, nameOverflows } from "@/lib/id-card/name-layout";
+import {
+  parseTypeScale,
+  serializeTypeScale,
+  type CardTypeScale,
+} from "@/lib/id-card/type-scale";
 import { PhotoCropper } from "@/components/photo/PhotoCropper";
 import { useLoading } from "@/lib/loading-context";
 import { normalizePhoto } from "@/lib/photo/client-resize";
@@ -55,6 +62,7 @@ type StaffData = {
   photoOriginalKey?: string | null;
   photoPreviewKey?: string | null;
   photoCrop?: string | null;
+  cardTypeScale?: string | null;
   lastPrintedAt?: string | null;
   canMedical?: boolean;
   canApprove?: boolean;
@@ -70,15 +78,18 @@ function StepPill({
   label: string;
   state: "done" | "current" | "todo" | "blocked";
 }) {
+  // Same colour language as the stage rail on the staff list: hull green is
+  // finished work, channel blue is where you are now, flag red is blocked.
   const styles = {
-    done: "bg-[#e8f8ee] text-[var(--nsc-green)]",
-    current: "bg-[var(--nsc-ink)] text-white",
-    todo: "bg-[var(--nsc-fill)] text-[var(--nsc-secondary)]",
-    blocked: "bg-[#ffeceb] text-[#c41e16]",
+    done: "bg-[var(--md-primary-container)] text-[var(--md-on-primary-container)]",
+    current: "bg-[var(--md-tertiary)] text-[var(--md-on-tertiary)]",
+    todo: "border border-[var(--md-outline)] text-[var(--md-on-surface-variant)]",
+    blocked:
+      "bg-[var(--md-error-container)] text-[var(--md-on-error-container)]",
   } as const;
   return (
     <span
-      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-tight ${styles[state]}`}
+      className={`inline-flex h-8 items-center rounded-[var(--md-shape-sm)] px-3 text-sm font-medium tracking-[0.007em] ${styles[state]}`}
     >
       {label}
     </span>
@@ -92,6 +103,9 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoSectionRef = useRef<HTMLDivElement>(null);
 
+  const [typeScale, setTypeScale] = useState<CardTypeScale>(() =>
+    parseTypeScale(initial?.cardTypeScale),
+  );
   const [form, setForm] = useState<StaffData>(
     initial ?? {
       idNumber: "",
@@ -114,6 +128,24 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   const [regenOpen, setRegenOpen] = useState(false);
 
   const mismatch = nameColorMismatch(form.frontTemplate, form.backTemplate);
+  // Fitted size at 100%, plus whether the current nudge pushes it off the card.
+  const nameGiven = [form.firstName, form.middleName]
+    .filter(Boolean)
+    .join(" ");
+  const nameLayoutAtDefault = useMemo(
+    () => layoutName(form.lastName, nameGiven, form.frontTemplate),
+    [form.lastName, nameGiven, form.frontTemplate],
+  );
+  const nameTooWide = useMemo(
+    () =>
+      Boolean(
+        nameOverflows(
+          layoutName(form.lastName, nameGiven, form.frontTemplate, typeScale.name),
+          form.frontTemplate,
+        ),
+      ),
+    [form.lastName, nameGiven, form.frontTemplate, typeScale.name],
+  );
   const hasPhoto = Boolean(form.photoPreviewKey);
   const isApproved =
     form.approvalState === "APPROVED" && !form.hasPendingEdits;
@@ -170,6 +202,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         genotype: form.genotype || null,
         frontTemplate: form.frontTemplate,
         backTemplate: form.backTemplate,
+        cardTypeScale: serializeTypeScale(typeScale),
       };
 
       setProgress(30);
@@ -437,7 +470,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   return (
     <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="order-2 space-y-5 md:order-1">
-        <div className="nsc-surface flex flex-wrap gap-2 p-3 sm:p-4">
+        <div className="md-card flex flex-wrap gap-2 p-3 sm:p-4">
           <StepPill
             label="1. Details"
             state={detailsDone ? "done" : "current"}
@@ -474,12 +507,10 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
           />
         </div>
 
-        <div className="nsc-surface space-y-5 p-5 md:p-6">
+        <div className="md-card space-y-6 p-4 md:p-6">
           <div>
-            <h2 className="text-[17px] font-semibold tracking-tight text-[var(--nsc-ink)]">
-              Staff details
-            </h2>
-            <p className="mt-1 text-[13px] text-[var(--nsc-secondary)]">
+            <h2 className="md-title-medium">Staff details</h2>
+            <p className="md-body-medium mt-1 text-[var(--md-on-surface-variant)]">
               Edits update the live card preview. Save when ready.
             </p>
           </div>
@@ -500,8 +531,8 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                 ["emergencyContactPhone", "Emergency phone"],
               ] as const
             ).map(([key, label]) => (
-              <label key={key} className="text-[13px]">
-                <span className="text-[var(--nsc-secondary)]">{label}</span>
+              <label key={key} className="block">
+                <span className="md-field-label">{label}</span>
                 <input
                   className="nsc-field"
                   value={(form[key] as string) ?? ""}
@@ -511,20 +542,16 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
             ))}
             {form.canMedical !== false && (
               <>
-                <label className="text-[13px]">
-                  <span className="text-[var(--nsc-secondary)]">
-                    Blood group (admin only)
-                  </span>
+                <label className="block">
+                  <span className="md-field-label">Blood group (admin only)</span>
                   <input
                     className="nsc-field"
                     value={form.bloodGroup ?? ""}
                     onChange={(e) => set("bloodGroup", e.target.value)}
                   />
                 </label>
-                <label className="text-[13px]">
-                  <span className="text-[var(--nsc-secondary)]">
-                    Genotype (admin only)
-                  </span>
+                <label className="block">
+                  <span className="md-field-label">Genotype (admin only)</span>
                   <input
                     className="nsc-field"
                     value={form.genotype ?? ""}
@@ -535,9 +562,11 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="front-template">Front template</Label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="front-template" className="md-field-label">
+                Front template
+              </Label>
               <Select
                 value={form.frontTemplate}
                 onValueChange={(value) => {
@@ -545,7 +574,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                 }}
                 items={FRONT_TEMPLATE_LABELS}
               >
-                <SelectTrigger id="front-template" className="w-full">
+                <SelectTrigger id="front-template" className="mt-1.5 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -557,8 +586,10 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="back-template">Back template</Label>
+            <div>
+              <Label htmlFor="back-template" className="md-field-label">
+                Back template
+              </Label>
               <Select
                 value={form.backTemplate}
                 onValueChange={(value) => {
@@ -566,7 +597,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                 }}
                 items={BACK_TEMPLATE_LABELS}
               >
-                <SelectTrigger id="back-template" className="w-full">
+                <SelectTrigger id="back-template" className="mt-1.5 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -579,26 +610,33 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               </Select>
             </div>
           </div>
+          <TypeScaleControl
+            value={typeScale}
+            onChange={setTypeScale}
+            nameBasePt={nameLayoutAtDefault.fontSizePt}
+            nameOverflows={nameTooWide}
+          />
+
           {mismatch ? (
-            <p className="rounded-xl bg-[#fff4e5] px-3 py-2 text-[13px] text-[#9a5b00]">
+            <p className="md-body-medium rounded-[var(--md-shape-xs)] bg-[var(--md-warning-container)] px-3 py-2 text-[var(--md-on-warning-container)]">
               Front and back colour families differ.
             </p>
           ) : null}
 
           <div
             ref={photoSectionRef}
-            className={`rounded-2xl border border-dashed p-4 ${
+            className={`rounded-[var(--md-shape-md)] border border-dashed p-4 ${
               form.id && !hasPhoto
-                ? "border-[var(--nsc-green)] bg-[#eef5f0]"
-                : "border-[var(--nsc-separator)] bg-[#fafafa]"
+                ? "border-[var(--md-primary)] bg-[var(--md-primary-container)]/25"
+                : "border-[var(--md-outline-variant)] bg-[var(--md-surface-container-low)]"
             }`}
           >
             {form.id ? (
               <div className="space-y-2">
-                <p className="text-[13px] font-medium text-[var(--nsc-ink)]">
+                <p className="md-title-small">
                   {hasPhoto ? "Staff photo" : "Add a staff photo"}
                 </p>
-                <p className="text-[12px] text-[var(--nsc-secondary)]">
+                <p className="md-body-small">
                   Use the camera or upload a file. Crop to fit the card.
                 </p>
                 <input
@@ -606,7 +644,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  className="mt-1 block w-full text-[13px] text-[var(--nsc-secondary)] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-[13px] file:font-medium file:text-[var(--nsc-ink)] file:shadow-sm"
+                  className="mt-2 block w-full text-sm text-[var(--md-on-surface-variant)] file:mr-3 file:h-10 file:rounded-full file:border file:border-[var(--md-outline)] file:bg-transparent file:px-4 file:text-sm file:font-medium file:text-[var(--md-primary)]"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f) onFile(f);
@@ -616,41 +654,36 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                   <button
                     type="button"
                     onClick={editPositioning}
-                    className="text-[13px] font-medium text-[var(--nsc-green)] hover:underline"
+                    className="md-label-large text-[var(--md-primary)] hover:underline"
                   >
                     Edit positioning
                   </button>
                 ) : null}
               </div>
             ) : (
-              <p className="text-[13px] text-[var(--nsc-secondary)]">
+              <p className="md-body-medium text-[var(--md-on-surface-variant)]">
                 Save the record first, then you can capture a photo.
               </p>
             )}
           </div>
 
           {form.hasPendingEdits ? (
-            <p className="rounded-xl bg-[#fff4e5] px-3 py-2 text-[13px] text-[#9a5b00]">
+            <p className="md-body-medium rounded-[var(--md-shape-xs)] bg-[var(--md-warning-container)] px-3 py-2 text-[var(--md-on-warning-container)]">
               Changes awaiting approval — printing blocked until published.
             </p>
           ) : null}
 
-          <div className="sticky bottom-3 z-20 -mx-1 space-y-3 rounded-2xl border border-[var(--nsc-separator)] bg-white/95 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none">
-            <div className="flex flex-wrap gap-2 border-t border-[var(--nsc-separator)] pt-0 sm:border-t sm:pt-4">
-              <Button
-                type="button"
-                onClick={save}
-                className="rounded-full bg-[var(--nsc-green)] px-4 hover:bg-[var(--nsc-green-hover)]"
-              >
+          <div className="sticky bottom-3 z-20 -mx-1 space-y-3 rounded-[var(--md-shape-lg)] bg-[var(--md-surface-container-high)] p-3 shadow-[var(--md-elevation-2)] sm:static sm:mx-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+            <div className="flex flex-wrap gap-2 sm:border-t sm:border-[var(--md-outline-variant)] sm:pt-5">
+              <Button type="button" onClick={save}>
                 Save
               </Button>
               {form.id && form.canApprove !== false && !isApproved ? (
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   onClick={approve}
                   disabled={!hasPhoto}
-                  className="rounded-full border-[var(--nsc-green)] text-[var(--nsc-green)]"
                   title={!hasPhoto ? "Add a photo before approving" : undefined}
                 >
                   Approve / publish
@@ -662,7 +695,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                   variant="outline"
                   onClick={printOne}
                   disabled={!printable}
-                  className="rounded-full"
                   title={
                     !printable
                       ? "Approve with a photo before printing"
@@ -677,7 +709,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                   type="button"
                   variant="ghost"
                   onClick={() => setMoreOpen((v) => !v)}
-                  className="rounded-full"
                 >
                   {moreOpen ? "Hide more" : "More actions"}
                 </Button>
@@ -685,12 +716,11 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
             </div>
 
             {form.id && moreOpen ? (
-              <div className="flex flex-wrap gap-2 rounded-xl bg-[#fafafa] p-3">
+              <div className="flex flex-wrap gap-2 rounded-[var(--md-shape-md)] bg-[var(--md-surface-container-low)] p-3">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-full"
                   onClick={() => {
                     const qrUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/v/${form.qrToken}`;
                     window.open(qrUrl, "_blank");
@@ -702,7 +732,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-full"
                   onClick={() => downloadQr("png")}
                 >
                   QR PNG
@@ -711,7 +740,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-full"
                   onClick={() => downloadQr("svg")}
                 >
                   QR SVG
@@ -722,7 +750,6 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="rounded-full"
                       onClick={() => setReactivateOpen(true)}
                     >
                       Reactivate
@@ -730,9 +757,8 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                   ) : (
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="destructive"
                       size="sm"
-                      className="rounded-full border-red-200 text-red-600 hover:bg-red-50"
                       onClick={() => setSuspendOpen(true)}
                     >
                       Suspend
@@ -742,9 +768,8 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                 {form.canQr !== false ? (
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
-                    className="rounded-full border-red-200 text-red-600 hover:bg-red-50"
                     onClick={() => setRegenOpen(true)}
                   >
                     Regenerate QR
@@ -758,24 +783,22 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       </div>
 
       <aside className="order-1 space-y-3 md:sticky md:top-20 md:order-2">
-        <div className="nsc-surface p-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="md-card p-4">
+          <div className="mb-4 flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-[15px] font-semibold tracking-tight text-[var(--nsc-ink)]">
-                Live ID card
-              </h2>
-              <p className="text-[12px] text-[var(--nsc-secondary)]">
-                Updates as you edit
-              </p>
+              <h2 className="md-title-medium">Live ID card</h2>
+              <p className="md-body-small">Updates as you edit</p>
             </div>
-            <div className="flex rounded-full bg-[var(--nsc-fill)] p-0.5">
+            {/* M3 segmented button */}
+            <div className="flex h-10 overflow-hidden rounded-full border border-[var(--md-outline)]">
               <button
                 type="button"
                 onClick={() => setSide("front")}
-                className={`rounded-full px-3 py-1 text-[12px] font-medium transition-colors ${
+                aria-pressed={side === "front"}
+                className={`px-4 text-sm font-medium tracking-[0.007em] transition-colors ${
                   side === "front"
-                    ? "bg-white text-[var(--nsc-ink)] shadow-sm"
-                    : "text-[var(--nsc-secondary)]"
+                    ? "bg-[var(--md-secondary-container)] text-[var(--md-on-secondary-container)]"
+                    : "text-[var(--md-on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
                 }`}
               >
                 Front
@@ -783,17 +806,18 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               <button
                 type="button"
                 onClick={() => setSide("back")}
-                className={`rounded-full px-3 py-1 text-[12px] font-medium transition-colors ${
+                aria-pressed={side === "back"}
+                className={`border-l border-[var(--md-outline)] px-4 text-sm font-medium tracking-[0.007em] transition-colors ${
                   side === "back"
-                    ? "bg-white text-[var(--nsc-ink)] shadow-sm"
-                    : "text-[var(--nsc-secondary)]"
+                    ? "bg-[var(--md-secondary-container)] text-[var(--md-on-secondary-container)]"
+                    : "text-[var(--md-on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
                 }`}
               >
                 Back
               </button>
             </div>
           </div>
-          <div className="flex max-h-[70vh] justify-center overflow-auto rounded-xl bg-[#f5f5f7] p-4">
+          <div className="flex max-h-[70vh] justify-center overflow-auto rounded-[var(--md-shape-md)] bg-[var(--md-surface-container)] p-4">
             <CardPreview
               side={side}
               frontTemplate={form.frontTemplate}
@@ -805,6 +829,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               idNumber={form.idNumber || "0000000000"}
               qrToken={form.qrToken || "previewtoken0001"}
               photoUrl={photoUrl}
+              typeScale={typeScale}
               scale={1.9}
             />
           </div>

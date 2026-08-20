@@ -5,6 +5,7 @@ import { requirePermission, requireSession } from "@/lib/session";
 import { can } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { requiresReapproval } from "@/lib/staff";
+import { parseTypeScale, serializeTypeScale } from "@/lib/id-card/type-scale";
 import type { Role } from "@/generated/prisma/client";
 
 const patchSchema = z.object({
@@ -39,6 +40,7 @@ const patchSchema = z.object({
       "BACK_BAR_GREEN",
     ])
     .optional(),
+  cardTypeScale: z.string().nullable().optional(),
 });
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -94,6 +96,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
   const role = gate.session!.user.role as Role;
   const data = { ...body.data };
+  if (data.cardTypeScale !== undefined) {
+    // Round-trip through the parser so only clamped, known slots are stored.
+    data.cardTypeScale = serializeTypeScale(parseTypeScale(data.cardTypeScale));
+  }
   if (!can(role, "medical")) {
     delete data.bloodGroup;
     delete data.genotype;
