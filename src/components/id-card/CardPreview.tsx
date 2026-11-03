@@ -73,7 +73,7 @@ function CardBack(props: Props & { scale: number }) {
   return (
     <div
       className="relative overflow-hidden bg-white shadow-lg"
-      style={{ width: width * props.scale, height: height * props.scale }}
+      style={cardBoxStyle(width, height, props.scale)}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -102,6 +102,22 @@ function CardBack(props: Props & { scale: number }) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * The template art (an <img>) and the drawn layer (an <svg>) must share one
+ * box with the card's exact aspect ratio. A fixed width+height let a narrow
+ * flex parent squeeze the box: the image stretched to fit while the SVG kept
+ * its proportions, so the photo ring, frame and text drifted off the art.
+ * Width-plus-aspect-ratio scales the whole card down evenly instead.
+ */
+function cardBoxStyle(width: number, height: number, scale: number): React.CSSProperties {
+  return {
+    width: width * scale,
+    maxWidth: "100%",
+    aspectRatio: `${width} / ${height}`,
+    flexShrink: 0,
+  };
 }
 
 function CardFront(props: Props & { scale: number }) {
@@ -154,7 +170,7 @@ function CardFront(props: Props & { scale: number }) {
   return (
     <div
       className="relative overflow-hidden bg-white shadow-lg"
-      style={{ width: width * props.scale, height: height * props.scale }}
+      style={cardBoxStyle(width, height, props.scale)}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
