@@ -74,13 +74,29 @@ export function cropOverhang(crop: Pick<CardCrop, "width" | "height" | "rotation
   return { w: Math.floor(crop.width * CROP_OVERHANG), h: Math.floor(crop.height * CROP_OVERHANG) };
 }
 
+/**
+ * Lowest zoom: below 1 the crop is larger than the photo, so the head can sit
+ * lower / smaller in the frame. The margin is filled by repeating edge pixels
+ * (see CROP_OVERHANG), so it's limited to right-angle rotations and kept well
+ * inside the overhang the print allows (0.7 → ≤ ~22% per side).
+ */
+export const MIN_ZOOM_OUT = 0.7;
+
+export function isRightAngle(rotation = 0) {
+  return rotation % 90 === 0;
+}
+
+export function minZoom(rotation = 0) {
+  return isRightAngle(rotation) ? MIN_ZOOM_OUT : 1;
+}
+
 function clampAxis(start: number, size: number, extent: number, overhang: number) {
   return Math.min(extent - size + overhang, Math.max(-overhang, start));
 }
 
 /** Keep the crop 4:5, within reach of the bounds, and no smaller than the dpi floor allows. */
 export function clampCrop(crop: CardCrop, bounds: Size): CardCrop {
-  const maxW = maxCropWidth(bounds);
+  const maxW = maxCropWidth(bounds) / minZoom(crop.rotation);
   const width = Math.min(maxW, Math.max(Math.min(minCropWidth(), maxW), crop.width));
   const height = width / CROP_ASPECT;
   const cx = crop.x + crop.width / 2;
@@ -99,8 +115,10 @@ export function clampCrop(crop: CardCrop, bounds: Size): CardCrop {
 export function roundCrop(crop: CardCrop, bounds: Size): CardCrop {
   const maxW = Math.floor(bounds.w);
   const maxH = Math.floor(bounds.h);
-  const width = Math.min(maxW, Math.round(crop.width));
-  const height = Math.min(maxH, Math.round(crop.height));
+  // Zoomed out (right-angle rotations only) the crop may be larger than the photo.
+  const roomy = isRightAngle(crop.rotation);
+  const width = roomy ? Math.round(crop.width) : Math.min(maxW, Math.round(crop.width));
+  const height = roomy ? Math.round(crop.height) : Math.min(maxH, Math.round(crop.height));
   const over = cropOverhang({ width, height, rotation: crop.rotation });
   return {
     ...crop,
@@ -128,7 +146,7 @@ export function maxZoom(bounds: Size) {
 
 /** Set the zoom level, keeping the crop centred where it was. */
 export function zoomCrop(crop: CardCrop, zoom: number, bounds: Size): CardCrop {
-  const width = maxCropWidth(bounds) / Math.max(1, zoom);
+  const width = maxCropWidth(bounds) / Math.max(minZoom(crop.rotation), zoom);
   const height = width / CROP_ASPECT;
   const cx = crop.x + crop.width / 2;
   const cy = crop.y + crop.height / 2;

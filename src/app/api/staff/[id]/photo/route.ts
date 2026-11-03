@@ -11,6 +11,7 @@ import {
   type CropParams,
 } from "@/lib/photo/pipeline";
 import { PHOTO_DPI_FLOOR } from "@/lib/id-card/slots.generated";
+import { usingCloudinary } from "@/lib/photo/storage";
 
 /** PDF rendering / image processing can exceed the default 10s on Vercel. */
 export const maxDuration = 60;
@@ -48,6 +49,19 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   const staff = await prisma.staff.findUnique({ where: { id } });
   if (!staff) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Vercel's disk is read-only and wiped between requests, so without
+  // Cloudinary there is nowhere durable to put a photo. Say so plainly
+  // instead of failing with a generic 500 on the first write.
+  if (process.env.VERCEL && !usingCloudinary()) {
+    return NextResponse.json(
+      {
+        error:
+          "Photo storage isn't set up on this deployment. Add CLOUDINARY_URL in the Vercel project's environment variables, then redeploy.",
+      },
+      { status: 503 },
+    );
+  }
 
   // Two intake shapes:
   //  - JSON  { crop, uploaded: true }  the browser already pushed the original

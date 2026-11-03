@@ -23,6 +23,7 @@ import {
   cropZoom,
   defaultCrop,
   maxZoom,
+  minZoom,
   rotatedBounds,
   roundCrop,
   zoomCrop,
@@ -1019,7 +1020,7 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
                 <Slider
                   aria-labelledby="adjust-zoom"
                   size="small"
-                  min={1}
+                  min={minZoom(adjust.crop.rotation)}
                   max={maxZoom(adjustBounds)}
                   step={0.01}
                   value={cropZoom(adjust.crop, adjustBounds)}

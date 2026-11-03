@@ -11,7 +11,7 @@ import {
   type FrontTemplateId,
 } from "@/lib/id-card/slots.generated";
 import { detectFaceSimple } from "@/lib/photo/face-detect";
-import { rotatedBounds } from "@/lib/photo/card-crop";
+import { CROP_OVERHANG, isRightAngle, minZoom, rotatedBounds } from "@/lib/photo/card-crop";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -56,6 +56,8 @@ const CARD_ASPECT = 4 / 5;
 const DEFAULT_ZOOM = 1.2;
 const MAX_ZOOM = 4;
 const PREVIEW_W = 150;
+/** How far past the photo's edge the crop may go, as a fraction of the crop — just inside the print's limit. */
+const OVERHANG = CROP_OVERHANG - 0.02;
 
 function dpiFromArea(area: Area | null) {
   if (!area) return 0;
@@ -79,7 +81,8 @@ function drawPreview(canvas: HTMLCanvasElement, img: HTMLImageElement, area: Are
   const dpr = window.devicePixelRatio || 1;
   const w = PREVIEW_W;
   const h = Math.round(PREVIEW_W / CARD_ASPECT);
-  if (canvas.width !== w * dpr) {
+  // Check both: a fresh canvas is 300×150, so width alone can already "match".
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
     canvas.width = w * dpr;
     canvas.height = h * dpr;
   }
@@ -95,7 +98,23 @@ function drawPreview(canvas: HTMLCanvasElement, img: HTMLImageElement, area: Are
   ctx.setTransform(s, 0, 0, s, -area.x * s, -area.y * s);
   ctx.translate(bounds.w / 2, bounds.h / 2);
   ctx.rotate((rotation * Math.PI) / 180);
-  ctx.drawImage(img, -natural.w / 2, -natural.h / 2);
+  const { w: nw, h: nh } = natural;
+  const x0 = -nw / 2;
+  const y0 = -nh / 2;
+  if (isRightAngle(rotation)) {
+    // Where the crop runs past the photo, the print repeats the edge pixels
+    // outward (sharp `extendWith: "copy"`). Draw the same here.
+    const p = Math.max(nw, nh);
+    ctx.drawImage(img, 0, 0, nw, 1, x0, y0 - p, nw, p);
+    ctx.drawImage(img, 0, nh - 1, nw, 1, x0, y0 + nh, nw, p);
+    ctx.drawImage(img, 0, 0, 1, nh, x0 - p, y0, p, nh);
+    ctx.drawImage(img, nw - 1, 0, 1, nh, x0 + nw, y0, p, nh);
+    ctx.drawImage(img, 0, 0, 1, 1, x0 - p, y0 - p, p, p);
+    ctx.drawImage(img, nw - 1, 0, 1, 1, x0 + nw, y0 - p, p, p);
+    ctx.drawImage(img, 0, nh - 1, 1, 1, x0 - p, y0 + nh, p, p);
+    ctx.drawImage(img, nw - 1, nh - 1, 1, 1, x0 + nw, y0 + nh, p, p);
+  }
+  ctx.drawImage(img, x0, y0);
 }
 
 export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initialCrop }: Props) {
@@ -153,15 +172,43 @@ export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initia
     setArea(pixels);
   }, []);
 
-  /** Keep the media covering the crop box (react-easy-crop only enforces this on drag). */
+  /**
+   * Keep the photo within reach of the crop box. At right-angle rotations the
+   * crop may run past the photo's edge by OVERHANG (the print fills that with
+   * repeated edge pixels), which is what lets a head near the top move down.
+   */
   const clampPosition = useCallback(
-    (pos: { x: number; y: number }, z: number) => {
+    (pos: { x: number; y: number }, z: number, rot: number) => {
       if (!media || !cropSize) return pos;
-      const maxX = Math.max(0, (media.width * z - cropSize.width) / 2);
-      const maxY = Math.max(0, (media.height * z - cropSize.height) / 2);
+      const over = isRightAngle(rot) ? OVERHANG : 0;
+      const maxX = Math.max(0, (media.width * z - cropSize.width) / 2 + over * cropSize.width);
+      const maxY = Math.max(0, (media.height * z - cropSize.height) / 2 + over * cropSize.height);
       return { x: clamp(pos.x, -maxX, maxX), y: clamp(pos.y, -maxY, maxY) };
     },
     [media, cropSize],
+  );
+
+  const zoomFloor = minZoom(rotation);
+
+  const changeZoom = useCallback(
+    (z: number) => {
+      const next = clamp(z, zoomFloor, MAX_ZOOM);
+      setZoom(next);
+      setCrop((c) => clampPosition(c, next, rotation));
+    },
+    [zoomFloor, clampPosition, rotation],
+  );
+
+  /** Off right angles the corners are blank, so zoom-out below 1 isn't allowed there. */
+  const changeRotation = useCallback(
+    (r: number) => {
+      const next = clamp(r, -45, 45);
+      setRotation(next);
+      const z = Math.max(zoom, minZoom(next));
+      if (z !== zoom) setZoom(z);
+      setCrop((c) => clampPosition(c, z, next));
+    },
+    [zoom, clampPosition],
   );
 
   const autoFaceCenter = useCallback(async () => {
@@ -176,7 +223,7 @@ export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initia
       }
       // Size the face to the card's framing, then put the eyes on the guide line.
       const faceH = face.height * media.height;
-      const z = clamp((FACE_FRAMING.faceHeightRatio * cropSize.height) / faceH, 1, 2.5);
+      const z = clamp((FACE_FRAMING.faceHeightRatio * cropSize.height) / faceH, minZoom(0), 2.5);
       const eyesY = face.centerY - face.height * 0.15;
       const target = clampPosition(
         {
@@ -184,6 +231,7 @@ export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initia
           y: (eyeLine - 0.5) * cropSize.height - (eyesY - 0.5) * media.height * z,
         },
         z,
+        0,
       );
       setRotation(0);
       setZoom(z);
@@ -213,7 +261,7 @@ export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initia
     }
   }
 
-  const rotateBy = (d: number) => setRotation((r) => clamp(r + d, -45, 45));
+  const rotateBy = (d: number) => changeRotation(rotation + d);
 
   const circleSize = cropSize ? Math.min(cropSize.width, cropSize.height) : 0;
 
@@ -274,15 +322,16 @@ export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initia
               zoom={zoom}
               rotation={rotation}
               aspect={CARD_ASPECT}
-              onCropChange={setCrop}
-              onZoomChange={setZoom}
-              onRotationChange={setRotation}
+              onCropChange={(c) => setCrop(clampPosition(c, zoom, rotation))}
+              onZoomChange={changeZoom}
+              onRotationChange={changeRotation}
+              restrictPosition={false}
               onCropComplete={onCropComplete}
               onMediaLoaded={setMedia}
               onCropSizeChange={setCropSize}
               initialCroppedAreaPixels={useInitial ? initialCrop : undefined}
               onInteractionStart={() => setUseInitial(false)}
-              minZoom={1}
+              minZoom={zoomFloor}
               maxZoom={MAX_ZOOM}
               zoomSpeed={0.6}
               showGrid={false}
@@ -373,11 +422,12 @@ export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initia
               <Slider
                 aria-labelledby="crop-zoom"
                 size="small"
-                min={1}
+                min={zoomFloor}
                 max={MAX_ZOOM}
                 step={0.01}
                 value={zoom}
-                onChange={(_, v) => setZoom(v as number)}
+                marks={[{ value: 1 }]}
+                onChange={(_, v) => changeZoom(v as number)}
               />
             </Box>
             <Box>
@@ -405,8 +455,8 @@ export function PhotoCropper({ imageSrc, frontTemplate, onCancel, onSave, initia
                   value={rotation}
                   track={false}
                   marks={[{ value: 0 }]}
-                  onChange={(_, v) => setRotation(v as number)}
-                  onDoubleClick={() => setRotation(0)}
+                  onChange={(_, v) => changeRotation(v as number)}
+                  onDoubleClick={() => changeRotation(0)}
                 />
                 <Tooltip title="Rotate +1°">
                   <IconButton size="small" onClick={() => rotateBy(1)} aria-label="Rotate right 1 degree">
