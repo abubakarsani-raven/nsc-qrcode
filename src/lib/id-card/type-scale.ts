@@ -1,34 +1,50 @@
 /**
- * Per-record type sizing for the card's dynamic text.
+ * Per-record type settings for the card's dynamic text.
  *
- * Each value is a multiplier on the size that slot would otherwise use — the
- * auto-fitted size for the name, a flat 6 pt for the designation and ID line.
- * Stored on Staff as JSON so the preview, the print PDF and the operator all
- * read one source of truth.
+ * Scale values are multipliers on the size that slot would otherwise use — the
+ * auto-fitted size for each name line, the template's nominal size for the
+ * designation and ID line. Stored on Staff (cardTypeScale, JSON) so the
+ * preview, the print PDF and the operator all read one source of truth.
  */
 
-export type CardTypeSlot = "name" | "designation" | "idNo";
+/** The name is always two lines: surname on top, other names below. */
+export type CardTypeSlot = "surname" | "otherNames" | "designation" | "idNo";
 
 export type CardTypeScale = Record<CardTypeSlot, number>;
 
+export type CardTextSettings = {
+  scale: CardTypeScale;
+  /** Tighter letter-spacing on both name lines, for long names. */
+  tightName: boolean;
+};
+
 export const DEFAULT_TYPE_SCALE: CardTypeScale = {
-  name: 1,
+  surname: 1,
+  otherNames: 1,
   designation: 1,
   idNo: 1,
+};
+
+export const DEFAULT_TEXT_SETTINGS: CardTextSettings = {
+  scale: DEFAULT_TYPE_SCALE,
+  tightName: false,
 };
 
 export const TYPE_SCALE_MIN = 0.75;
 export const TYPE_SCALE_MAX = 1.25;
 export const TYPE_SCALE_STEP = 0.05;
 
-/** Base point size for the slots that aren't auto-fitted. */
-export const BASE_PT = { designation: 6, idNo: 6 } as const;
+/** Extra name tracking (em) when `tightName` is on. */
+export const TIGHT_NAME_TRACKING_EM = -0.03;
 
 export const TYPE_SLOT_LABELS: Record<CardTypeSlot, string> = {
-  name: "Name",
+  surname: "Surname",
+  otherNames: "Other names",
   designation: "Designation",
   idNo: "ID number",
 };
+
+const SLOTS = Object.keys(DEFAULT_TYPE_SCALE) as CardTypeSlot[];
 
 export function clampScale(value: number) {
   if (!Number.isFinite(value)) return 1;
@@ -39,32 +55,54 @@ export function clampScale(value: number) {
   return Math.min(TYPE_SCALE_MAX, Math.max(TYPE_SCALE_MIN, rounded));
 }
 
+function defaults(): CardTextSettings {
+  return { ...DEFAULT_TEXT_SETTINGS, scale: { ...DEFAULT_TYPE_SCALE } };
+}
+
 /** Tolerant of missing, malformed or out-of-range stored values. */
-export function parseTypeScale(raw?: string | null): CardTypeScale {
-  if (!raw) return { ...DEFAULT_TYPE_SCALE };
+export function parseTextSettings(raw?: string | null): CardTextSettings {
+  if (!raw) return defaults();
   try {
-    const parsed = JSON.parse(raw) as Partial<Record<CardTypeSlot, unknown>>;
+    const parsed = JSON.parse(raw) as Partial<
+      Record<CardTypeSlot | "name", unknown> & { tightName: unknown }
+    >;
+    // Records saved before the name was split carry one `name` scale for both lines.
+    const legacyName = parsed.name ?? 1;
     return {
-      name: clampScale(Number(parsed.name ?? 1)),
-      designation: clampScale(Number(parsed.designation ?? 1)),
-      idNo: clampScale(Number(parsed.idNo ?? 1)),
+      scale: {
+        surname: clampScale(Number(parsed.surname ?? legacyName)),
+        otherNames: clampScale(Number(parsed.otherNames ?? legacyName)),
+        designation: clampScale(Number(parsed.designation ?? 1)),
+        idNo: clampScale(Number(parsed.idNo ?? 1)),
+      },
+      tightName: parsed.tightName === true,
     };
   } catch {
-    return { ...DEFAULT_TYPE_SCALE };
+    return defaults();
   }
 }
 
-/** `null` when everything is default, so untouched records stay clean. */
-export function serializeTypeScale(scale: CardTypeScale): string | null {
-  const clamped: CardTypeScale = {
-    name: clampScale(scale.name),
-    designation: clampScale(scale.designation),
-    idNo: clampScale(scale.idNo),
-  };
-  const isDefault = (Object.keys(clamped) as CardTypeSlot[]).every(
-    (k) => Math.abs(clamped[k] - 1) < 0.001,
+export function parseTypeScale(raw?: string | null): CardTypeScale {
+  return parseTextSettings(raw).scale;
+}
+
+export function isDefaultTextSettings(settings: CardTextSettings) {
+  return (
+    SLOTS.every((k) => Math.abs(clampScale(settings.scale[k]) - 1) < 0.001) &&
+    !settings.tightName
   );
-  return isDefault ? null : JSON.stringify(clamped);
+}
+
+/** `null` when everything is default, so untouched records stay clean. */
+export function serializeTextSettings(settings: CardTextSettings): string | null {
+  if (isDefaultTextSettings(settings)) return null;
+  return JSON.stringify({
+    surname: clampScale(settings.scale.surname),
+    otherNames: clampScale(settings.scale.otherNames),
+    designation: clampScale(settings.scale.designation),
+    idNo: clampScale(settings.scale.idNo),
+    ...(settings.tightName ? { tightName: true } : {}),
+  });
 }
 
 /** Point size a slot ends up at, for showing the operator real numbers. */

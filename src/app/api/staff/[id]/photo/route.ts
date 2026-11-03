@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
 import { audit } from "@/lib/audit";
@@ -11,11 +12,38 @@ import {
 } from "@/lib/photo/pipeline";
 import { PHOTO_DPI_FLOOR } from "@/lib/id-card/slots.generated";
 
+/** PDF rendering / image processing can exceed the default 10s on Vercel. */
+export const maxDuration = 60;
+
 type Ctx = { params: Promise<{ id: string }> };
+
+const finite = z.number().finite();
+const cropSchema = z.object({
+  x: finite,
+  y: finite,
+  width: finite.positive().max(20000),
+  height: finite.positive().max(20000),
+  zoom: finite.positive().optional(),
+  rotation: finite.min(-360).max(360).optional(),
+});
+
+/** Accepts the crop as an object or a JSON string; null when invalid. */
+function readCrop(raw: unknown): CropParams | null {
+  let value = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const parsed = cropSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 export async function POST(req: NextRequest, ctx: Ctx) {
   const gate = await requirePermission("photo");
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
   const { id } = await ctx.params;
 
   const staff = await prisma.staff.findUnique({ where: { id } });
@@ -25,38 +53,47 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   //  - JSON  { crop, uploaded: true }  the browser already pushed the original
   //          to Cloudinary; nothing large crosses this function. This is the
   //          only path that works on Vercel, whose body limit is 4.5 MB.
+  //  - JSON  { crop, reposition: true } re-cut the stored original with a new
+  //          crop (dragging / zooming the photo on the live card).
   //  - multipart with a `file`         legacy/local path, still used when
   //          Cloudinary is unconfigured (development).
   let crop: CropParams;
   let file: File | null = null;
+  let reposition = false;
 
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    let body: { crop?: unknown; uploaded?: unknown };
+    let body: { crop?: unknown; uploaded?: unknown; reposition?: unknown };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "invalid body" }, { status: 400 });
     }
-    if (!body.uploaded) {
+    reposition = body.reposition === true;
+    if (reposition && !staff.photoOriginalKey) {
+      return NextResponse.json(
+        { error: "No original photo to reposition — upload one first" },
+        { status: 400 },
+      );
+    }
+    if (!body.uploaded && !reposition) {
       return NextResponse.json(
         { error: "uploaded flag required when posting JSON" },
         { status: 400 },
       );
     }
-    try {
-      crop =
-        typeof body.crop === "string"
-          ? JSON.parse(body.crop)
-          : (body.crop as CropParams);
-    } catch {
-      return NextResponse.json({ error: "invalid crop" }, { status: 400 });
+    const parsedCrop = readCrop(body.crop);
+    if (!parsedCrop) {
+      return NextResponse.json({ error: "A valid crop box is required" }, { status: 400 });
     }
-    if (!crop) {
-      return NextResponse.json({ error: "crop required" }, { status: 400 });
-    }
+    crop = parsedCrop;
   } else {
-    const form = await req.formData();
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return NextResponse.json({ error: "invalid upload" }, { status: 400 });
+    }
     const maybeFile = form.get("file");
     const cropRaw = form.get("crop");
     if (!(maybeFile instanceof File) || typeof cropRaw !== "string") {
@@ -65,12 +102,18 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         { status: 400 },
       );
     }
-    file = maybeFile;
-    try {
-      crop = JSON.parse(cropRaw);
-    } catch {
-      return NextResponse.json({ error: "invalid crop" }, { status: 400 });
+    if (!maybeFile.type.startsWith("image/")) {
+      return NextResponse.json({ error: "Only image files can be uploaded" }, { status: 415 });
     }
+    if (maybeFile.size > 15 * 1024 * 1024) {
+      return NextResponse.json({ error: "Photo is larger than 15 MB" }, { status: 413 });
+    }
+    file = maybeFile;
+    const parsedCrop = readCrop(cropRaw);
+    if (!parsedCrop) {
+      return NextResponse.json({ error: "A valid crop box is required" }, { status: 400 });
+    }
+    crop = parsedCrop;
   }
 
   const dpi = effectiveDpi(crop.width, crop.height);
@@ -89,7 +132,9 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   // When the browser uploaded direct to Cloudinary the original is already at
   // the id derived from the staff id, so there is nothing to store here.
   let originalKey: string;
-  if (file) {
+  if (reposition) {
+    originalKey = staff.photoOriginalKey!;
+  } else if (file) {
     const buffer = Buffer.from(await file.arrayBuffer());
     originalKey = await saveOriginal(id, buffer, file.type || "image/jpeg");
   } else {
@@ -119,7 +164,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     },
   });
 
-  await audit(gate.session!.user.id, "PHOTO_REPLACED", id, { dpi });
+  await audit(gate.session.user.id, "PHOTO_REPLACED", id, {
+    dpi,
+    ...(reposition ? { repositioned: true } : {}),
+  });
 
   return NextResponse.json({ staff: updated, dpi });
 }

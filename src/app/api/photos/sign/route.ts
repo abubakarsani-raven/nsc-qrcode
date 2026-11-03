@@ -18,7 +18,7 @@ import {
  */
 export async function POST(req: NextRequest) {
   const gate = await requirePermission("photo");
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
 
   if (!usingCloudinary()) {
     return NextResponse.json(

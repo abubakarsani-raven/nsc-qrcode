@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { errorMessage, readJson } from "@/lib/client-api";
+import { useRefresh } from "@/lib/use-refresh";
+import { RefreshIndicator } from "@/components/refresh-indicator";
 
 export type AuditEntry = {
   id: string;
@@ -34,7 +36,7 @@ export function AuditLog({
   canClear = false,
   defaultOpen = false,
 }: Props) {
-  const router = useRouter();
+  const { refresh, refreshing } = useRefresh();
   const [open, setOpen] = useState(defaultOpen);
   const [clearOpen, setClearOpen] = useState(false);
 
@@ -45,15 +47,15 @@ export function AuditLog({
     const res = await fetch(`/api/staff/${staffId}/audit`, {
       method: "DELETE",
     });
-    const data = await res.json().catch(() => ({}));
+    const data = await readJson<{ removed?: number }>(res);
     if (!res.ok) {
-      toast.error(data.error || "Could not clear the audit log");
+      toast.error(errorMessage(res, data, "Could not clear the audit log"));
       return;
     }
     toast.success(
       data.removed === 1 ? "1 event cleared" : `${data.removed} events cleared`,
     );
-    router.refresh();
+    refresh();
   }
 
   return (
@@ -100,7 +102,7 @@ export function AuditLog({
       {open ? (
         <ul
           id="audit-log-list"
-          className="md-body-medium divide-y divide-[var(--md-outline-variant)] border-t border-[var(--md-outline-variant)]"
+          className="nsc-anim-fade md-body-medium divide-y divide-[var(--md-outline-variant)] border-t border-[var(--md-outline-variant)]"
         >
           {events.length === 0 ? (
             <li className="px-4 py-8 text-center text-[var(--md-on-surface-variant)]">
@@ -140,6 +142,7 @@ export function AuditLog({
         requireText="CLEAR"
         onConfirm={clearLog}
       />
+      <RefreshIndicator show={refreshing} />
     </div>
   );
 }

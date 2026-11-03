@@ -2,16 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { SearchIcon } from "lucide-react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Label } from "@/components/ui/label";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import InputAdornment from "@mui/material/InputAdornment";
+import ListSubheader from "@mui/material/ListSubheader";
+import MenuItem from "@mui/material/MenuItem";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  FRONT_TEMPLATES,
+  FRONT_TEMPLATE_IDS,
+  type Brand,
+  type FrontTemplateId,
+} from "@/lib/id-card/slots.generated";
+import { BRAND_LABELS, FRONT_TEMPLATE_LABELS } from "@/lib/id-card/template-labels";
 
 const STATUS_ITEMS = {
   ALL: "All statuses",
@@ -25,22 +30,30 @@ const APPROVAL_ITEMS = {
   APPROVED: "Approved",
 } as const;
 
+const BRANDS: Brand[] = ["NSC", "NPERA"];
+
+function designLabel(id: FrontTemplateId) {
+  return `${FRONT_TEMPLATES[id].brand === "NPERA" ? "" : "NSC · "}${FRONT_TEMPLATE_LABELS[id]}`;
+}
+
 export function StaffFilters() {
   const router = useRouter();
   const sp = useSearchParams();
   const [q, setQ] = useState(sp.get("q") ?? "");
   const status = (sp.get("status") as keyof typeof STATUS_ITEMS | null) ?? "ALL";
-  const approval =
-    (sp.get("approvalState") as keyof typeof APPROVAL_ITEMS | null) ?? "ALL";
+  const approval = (sp.get("approvalState") as keyof typeof APPROVAL_ITEMS | null) ?? "ALL";
+  const design = (sp.get("frontTemplate") as FrontTemplateId | null) ?? "ALL";
   const missingPhoto = sp.get("missingPhoto") === "1";
 
   function apply(next: Record<string, string | null>) {
     const params = new URLSearchParams(sp.toString());
+    params.delete("page");
     Object.entries(next).forEach(([k, v]) => {
       if (!v || v === "ALL") params.delete(k);
       else params.set(k, v);
     });
-    router.push(`/staff?${params.toString()}`);
+    const qs = params.toString();
+    router.push(qs ? `/staff?${qs}` : "/staff");
   }
 
   useEffect(() => {
@@ -57,153 +70,131 @@ export function StaffFilters() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce search only
   }, [q]);
 
-  const chips: { key: string; label: string; clear: Record<string, string | null> }[] =
-    [];
-  if (q.trim()) {
-    chips.push({ key: "q", label: `Search: ${q.trim()}`, clear: { q: null } });
+  const chips: { key: string; label: string; clear: Record<string, string | null> }[] = [];
+  if (q.trim()) chips.push({ key: "q", label: `Search: ${q.trim()}`, clear: { q: null } });
+  if (status !== "ALL" && STATUS_ITEMS[status]) {
+    chips.push({ key: "status", label: STATUS_ITEMS[status], clear: { status: null } });
   }
-  if (status !== "ALL") {
-    chips.push({
-      key: "status",
-      label: STATUS_ITEMS[status],
-      clear: { status: null },
-    });
-  }
-  if (approval !== "ALL") {
+  if (approval !== "ALL" && APPROVAL_ITEMS[approval]) {
     chips.push({
       key: "approval",
       label: APPROVAL_ITEMS[approval],
       clear: { approvalState: null },
     });
   }
+  if (design !== "ALL" && FRONT_TEMPLATES[design]) {
+    chips.push({ key: "design", label: designLabel(design), clear: { frontTemplate: null } });
+  }
   if (missingPhoto) {
-    chips.push({
-      key: "photo",
-      label: "Missing photo",
-      clear: { missingPhoto: null },
-    });
+    chips.push({ key: "photo", label: "Missing photo", clear: { missingPhoto: null } });
   }
 
   return (
-    <div className="space-y-3 pb-3">
-      <form
-        className="manifest-toolbar"
+    <Stack spacing={1.5} sx={{ pb: 2 }}>
+      <Stack
+        component="form"
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.5}
         onSubmit={(e) => {
           e.preventDefault();
           apply({ q: q.trim() || null });
         }}
       >
-        <div className="min-w-[220px] flex-1">
-          <Label htmlFor="staff-search" className="md-field-label">
-            Search
-          </Label>
-          <div className="relative">
-            <SearchIcon
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2 text-[var(--md-on-surface-variant)]"
-            />
-            <input
-              id="staff-search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="md-field pl-11"
-              placeholder="Name or ID"
-            />
-          </div>
-        </div>
-        <div>
-          <Label className="md-field-label">Status</Label>
-          <Select
-            value={STATUS_ITEMS[status] ? status : "ALL"}
-            onValueChange={(value) => {
-              if (value != null) apply({ status: value });
-            }}
-            items={STATUS_ITEMS}
-          >
-            <SelectTrigger className="mt-1.5 min-w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(STATUS_ITEMS) as (keyof typeof STATUS_ITEMS)[]).map(
-                (id) => (
-                  <SelectItem key={id} value={id}>
-                    {STATUS_ITEMS[id]}
-                  </SelectItem>
-                ),
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="md-field-label">Approval</Label>
-          <Select
-            value={APPROVAL_ITEMS[approval] ? approval : "ALL"}
-            onValueChange={(value) => {
-              if (value != null) apply({ approvalState: value });
-            }}
-            items={APPROVAL_ITEMS}
-          >
-            <SelectTrigger className="mt-1.5 min-w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(
-                Object.keys(APPROVAL_ITEMS) as (keyof typeof APPROVAL_ITEMS)[]
-              ).map((id) => (
-                <SelectItem key={id} value={id}>
-                  {APPROVAL_ITEMS[id]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </form>
-
-      {chips.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {chips.map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              onClick={() => apply(chip.clear)}
-              className="md-chip"
-              data-selected="true"
-              aria-label={`Remove filter ${chip.label}`}
-            >
-              {chip.label}
-              <span aria-hidden="true" className="text-base leading-none">
-                ×
-              </span>
-            </button>
+        <TextField
+          label="Search"
+          placeholder="Name, ID or designation"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          sx={{ flex: 2, minWidth: 220 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon aria-hidden className="size-5" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <TextField
+          select
+          label="Status"
+          value={STATUS_ITEMS[status] ? status : "ALL"}
+          onChange={(e) => apply({ status: e.target.value })}
+          sx={{ flex: 1, minWidth: 150 }}
+        >
+          {(Object.keys(STATUS_ITEMS) as (keyof typeof STATUS_ITEMS)[]).map((id) => (
+            <MenuItem key={id} value={id}>
+              {STATUS_ITEMS[id]}
+            </MenuItem>
           ))}
-          <button
-            type="button"
-            onClick={() => router.push("/staff")}
-            className="md-label-large px-2 text-[var(--md-primary)] hover:underline"
-          >
-            Clear all
-          </button>
-        </div>
-      ) : null}
+        </TextField>
+        <TextField
+          select
+          label="Approval"
+          value={APPROVAL_ITEMS[approval] ? approval : "ALL"}
+          onChange={(e) => apply({ approvalState: e.target.value })}
+          sx={{ flex: 1, minWidth: 150 }}
+        >
+          {(Object.keys(APPROVAL_ITEMS) as (keyof typeof APPROVAL_ITEMS)[]).map((id) => (
+            <MenuItem key={id} value={id}>
+              {APPROVAL_ITEMS[id]}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          label="Card design"
+          value={design !== "ALL" && FRONT_TEMPLATES[design] ? design : "ALL"}
+          onChange={(e) => apply({ frontTemplate: e.target.value })}
+          sx={{ flex: 1.2, minWidth: 170 }}
+        >
+          <MenuItem value="ALL">All designs</MenuItem>
+          {BRANDS.flatMap((brand) => [
+            <ListSubheader key={brand}>{BRAND_LABELS[brand]}</ListSubheader>,
+            ...FRONT_TEMPLATE_IDS.filter((id) => FRONT_TEMPLATES[id].brand === brand).map((id) => (
+              <MenuItem key={id} value={id}>
+                {FRONT_TEMPLATE_LABELS[id]}
+              </MenuItem>
+            )),
+          ])}
+        </TextField>
+      </Stack>
 
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href="/staff?missingPhoto=1"
-          className="md-chip"
-          data-selected={missingPhoto ? "true" : "false"}
-        >
-          Needs photo
-        </Link>
-        <Link
-          href="/staff?approvalState=PENDING"
-          className="md-chip"
-          data-selected={
-            approval === "PENDING" && !missingPhoto ? "true" : "false"
-          }
-        >
-          Needs approval
-        </Link>
-      </div>
-    </div>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
+        <Chip
+          label="Needs photo"
+          clickable
+          color={missingPhoto ? "primary" : "default"}
+          variant={missingPhoto ? "filled" : "outlined"}
+          onClick={() => apply({ missingPhoto: missingPhoto ? null : "1" })}
+        />
+        <Chip
+          label="Needs approval"
+          clickable
+          color={approval === "PENDING" ? "primary" : "default"}
+          variant={approval === "PENDING" ? "filled" : "outlined"}
+          onClick={() => apply({ approvalState: approval === "PENDING" ? null : "PENDING" })}
+        />
+        {chips.length > 0 ? (
+          <>
+            {chips.map((chip) => (
+              <Chip
+                key={chip.key}
+                label={chip.label}
+                onDelete={() => apply(chip.clear)}
+                sx={{
+                  bgcolor: "var(--md-secondary-container)",
+                  color: "var(--md-on-secondary-container)",
+                }}
+              />
+            ))}
+            <Button size="small" variant="text" onClick={() => router.push("/staff")}>
+              Clear all
+            </Button>
+          </>
+        ) : null}
+      </Stack>
+    </Stack>
   );
 }

@@ -43,8 +43,8 @@ export function LoadingOverlay() {
   const overdue = remaining !== null && remaining <= 0;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--md-scrim)]">
-      <div className="mx-4 w-full max-w-sm rounded-[var(--md-shape-xl)] bg-[var(--md-surface-container-high)] p-6 shadow-[var(--md-elevation-3)] sm:mx-0">
+    <div className="nsc-anim-fade fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--md-scrim)]" role="alertdialog" aria-busy="true" aria-label={message}>
+      <div className="nsc-anim-pop mx-4 w-full max-w-sm rounded-[var(--md-shape-xl)] bg-[var(--md-surface-container-high)] p-6 shadow-[var(--md-elevation-3)] sm:mx-0">
         <div className="mb-5 flex justify-center">
           <div className="relative h-12 w-12">
             <div className="absolute inset-0 rounded-full border-4 border-[var(--md-surface-container-highest)]" />

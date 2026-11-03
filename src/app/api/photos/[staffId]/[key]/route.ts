@@ -1,20 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readPhotoFile, writePreviewFromCrop, type CropParams } from "@/lib/photo/pipeline";
+import { writePreviewFromCrop, type CropParams } from "@/lib/photo/pipeline";
 import { getPhoto } from "@/lib/photo/storage";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ID_PATTERN } from "@/lib/api";
 
 type Ctx = { params: Promise<{ staffId: string; key: string }> };
 
-function isAllowedKey(key: string) {
-  return (
-    key === "preview.jpg" ||
-    key === "original.jpg" ||
-    key === "original.png" ||
-    key === "original.webp" ||
-    key.startsWith("original.")
-  );
-}
+/** Exactly the keys the pipeline writes — nothing that could walk a path. */
+const ALLOWED_KEYS = new Set(["preview.jpg", "original.jpg", "original.png", "original.webp"]);
 
 async function loadOrRebuildPreview(staffId: string): Promise<Buffer> {
   try {
@@ -48,7 +42,7 @@ async function loadOrRebuildPreview(staffId: string): Promise<Buffer> {
 
 export async function GET(req: NextRequest, ctx: Ctx) {
   const { staffId, key } = await ctx.params;
-  if (!isAllowedKey(key)) {
+  if (!ALLOWED_KEYS.has(key) || !ID_PATTERN.test(staffId)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -70,7 +64,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     const buf =
       key === "preview.jpg"
         ? await loadOrRebuildPreview(staffId)
-        : await readPhotoFile(staffId, key);
+        : await getPhoto(staffId, key);
     const type = key.endsWith(".png")
       ? "image/png"
       : key.endsWith(".webp")

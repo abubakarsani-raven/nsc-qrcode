@@ -1,134 +1,105 @@
 /**
- * Face detection module with fallback support for MediaPipe
- * Can detect faces in images and return center + size information
+ * Lightweight face-position heuristic (no ML model): finds the brightest
+ * concentrated region of a portrait, which in a typical ID photo against a
+ * plain background is the face. Good enough to get the framing close; the
+ * user fine-tunes by dragging.
  */
 
 export type FaceDetectionResult = {
   detected: boolean;
-  centerX: number;  // 0-1 relative to image width
-  centerY: number;  // 0-1 relative to image height
-  width: number;    // face width as % of image width
-  height: number;   // face height as % of image height
-  confidence: number; // 0-1 detection confidence
+  /** 0–1 relative to image width. */
+  centerX: number;
+  /** 0–1 relative to image height. */
+  centerY: number;
+  /** Face width as a fraction of image width. */
+  width: number;
+  /** Face height as a fraction of image height. */
+  height: number;
+  /** 0–1 detection confidence. */
+  confidence: number;
 };
 
-/**
- * Simple face detection using image edge detection
- * Returns estimated face center and size
- */
-export async function detectFaceSimple(
-  imageSrc: string
-): Promise<FaceDetectionResult> {
-  return new Promise((resolve) => {
+const NOT_FOUND: FaceDetectionResult = {
+  detected: false,
+  centerX: 0.5,
+  centerY: 0.35,
+  width: 0.3,
+  height: 0.4,
+  confidence: 0,
+};
+
+/** Analysis resolution. The heuristic needs shape, not detail. */
+const ANALYSIS_EDGE = 160;
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
-
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Could not get canvas context");
-
-        ctx.drawImage(img, 0, 0);
-        const imageData = ctx.getImageData(0, 0, img.width, img.height);
-        const data = imageData.data;
-
-        // Convert to grayscale and find edges
-        const gray = new Uint8Array(img.width * img.height);
-        for (let i = 0; i < data.length; i += 4) {
-          gray[i / 4] =
-            0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        }
-
-        // Find regions with consistent skin tones / face-like patterns
-        // Look for the brightest concentrated region (usually face)
-        let maxBrightness = 0;
-        let brightX = 0,
-          brightY = 0;
-
-        const step = Math.max(1, Math.floor(img.width / 20));
-        const windowSize = Math.floor(img.width / 6);
-
-        for (let y = 0; y < img.height - windowSize; y += step) {
-          for (let x = 0; x < img.width - windowSize; x += step) {
-            let sum = 0;
-            let count = 0;
-
-            for (let dy = 0; dy < windowSize; dy++) {
-              for (let dx = 0; dx < windowSize; dx++) {
-                sum += gray[(y + dy) * img.width + (x + dx)];
-                count++;
-              }
-            }
-
-            const avg = sum / count;
-            if (avg > maxBrightness && avg > 80) {
-              // Avoid pure black regions
-              maxBrightness = avg;
-              brightX = x + windowSize / 2;
-              brightY = y + windowSize / 2;
-            }
-          }
-        }
-
-        // Estimate face center and size based on portrait conventions
-        const faceWidth = Math.min(
-          1,
-          Math.max(0.15, windowSize / img.width) * 1.2
-        ); // 15-40% of width
-        const faceHeight = faceWidth * 1.3; // Face is taller than wide
-
-        resolve({
-          detected: maxBrightness > 100,
-          centerX: Math.max(
-            0.25,
-            Math.min(0.75, brightX / img.width)
-          ),
-          centerY: Math.max(
-            0.25,
-            Math.min(0.65, (brightY / img.height) * 0.9)
-          ), // Bias toward upper-middle
-          width: faceWidth,
-          height: faceHeight,
-          confidence: Math.min(1, maxBrightness / 255),
-        });
-      } catch {
-        resolve({
-          detected: false,
-          centerX: 0.5,
-          centerY: 0.35,
-          width: 0.3,
-          height: 0.4,
-          confidence: 0,
-        });
-      }
-    };
-
-    img.onerror = () => {
-      resolve({
-        detected: false,
-        centerX: 0.5,
-        centerY: 0.35,
-        width: 0.3,
-        height: 0.4,
-        confidence: 0,
-      });
-    };
-
-    img.src = imageSrc;
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
   });
 }
 
-/**
- * Optional: Load MediaPipe FaceMesh for production use
- * Uncomment and configure if needed
- */
-export async function detectFaceMediaPipe(
-  imageSrc: string
-): Promise<FaceDetectionResult> {
-  // TODO: Integrate @mediapipe/tasks-vision when needed
-  // For now, fall back to simple detection
-  return detectFaceSimple(imageSrc);
+export async function detectFaceSimple(imageSrc: string): Promise<FaceDetectionResult> {
+  const img = await loadImage(imageSrc);
+  if (!img || !img.naturalWidth) return NOT_FOUND;
+
+  try {
+    const scale = Math.min(1, ANALYSIS_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return NOT_FOUND;
+    ctx.drawImage(img, 0, 0, w, h);
+    const { data } = ctx.getImageData(0, 0, w, h);
+
+    // Summed-area table of luminance: any window's sum in O(1).
+    const sat = new Float64Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let row = 0;
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        row += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        sat[(y + 1) * (w + 1) + (x + 1)] = sat[y * (w + 1) + (x + 1)] + row;
+      }
+    }
+    const windowSum = (x: number, y: number, s: number) =>
+      sat[(y + s) * (w + 1) + (x + s)] -
+      sat[y * (w + 1) + (x + s)] -
+      sat[(y + s) * (w + 1) + x] +
+      sat[y * (w + 1) + x];
+
+    const win = Math.max(4, Math.floor(w / 6));
+    let best = 0;
+    let bx = w / 2;
+    let by = h / 3;
+    for (let y = 0; y + win <= h; y++) {
+      for (let x = 0; x + win <= w; x++) {
+        const avg = windowSum(x, y, win) / (win * win);
+        if (avg > best && avg > 80) {
+          best = avg;
+          bx = x + win / 2;
+          by = y + win / 2;
+        }
+      }
+    }
+
+    const faceWidth = Math.min(1, Math.max(0.15, win / w) * 1.2);
+    return {
+      detected: best > 100,
+      centerX: Math.max(0.25, Math.min(0.75, bx / w)),
+      // Bias toward upper-middle, where faces sit in portraits.
+      centerY: Math.max(0.25, Math.min(0.65, (by / h) * 0.9)),
+      width: faceWidth,
+      height: Math.min(1, ((faceWidth * w) / h) * 1.3),
+      confidence: Math.min(1, best / 255),
+    };
+  } catch {
+    // Tainted canvas (cross-origin image without CORS) or decode failure.
+    return NOT_FOUND;
+  }
 }

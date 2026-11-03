@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/session";
-import { audit } from "@/lib/audit";
+import { parseJson } from "@/lib/api";
 import {
   renderBatchPdf,
   renderImposedSheet,
@@ -11,8 +11,14 @@ import {
 } from "@/lib/id-card/render-pdf";
 import type { FrontTemplateId, BackTemplateId } from "@/lib/id-card/slots.generated";
 
+/** Rendering is synchronous per card; past this a serverless call can time out. */
+/** PDF rendering / image processing can exceed the default 10s on Vercel. */
+export const maxDuration = 60;
+
+const MAX_EXPORT = 200;
+
 const schema = z.object({
-  ids: z.array(z.string()).min(1),
+  ids: z.array(z.string().min(1)).min(1, "Select at least one record"),
   mode: z.enum(["single", "batch", "impose-a4", "impose-a3"]).default("batch"),
 });
 
@@ -40,28 +46,41 @@ function toInput(s: {
 
 export async function POST(req: NextRequest) {
   const gate = await requirePermission("print");
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
 
-  const body = schema.safeParse(await req.json());
-  if (!body.success) {
-    return NextResponse.json({ error: body.error.flatten() }, { status: 400 });
+  const body = await parseJson(req, schema);
+  if (body.error) return body.error;
+
+  const ids = [...new Set(body.data.ids)];
+  if (ids.length > MAX_EXPORT) {
+    return NextResponse.json(
+      { error: `Export at most ${MAX_EXPORT} cards at a time — narrow the filters or select rows.` },
+      { status: 413 },
+    );
   }
 
-  const staff = await prisma.staff.findMany({
-    where: { id: { in: body.data.ids } },
-  });
-
-  if (staff.length !== body.data.ids.length) {
-    return NextResponse.json({ error: "Some staff not found" }, { status: 404 });
+  const found = await prisma.staff.findMany({ where: { id: { in: ids } } });
+  if (found.length !== ids.length) {
+    return NextResponse.json(
+      { error: "Some records no longer exist — refresh the list and try again." },
+      { status: 404 },
+    );
   }
+  // Keep the caller's order (the list's sort), not the database's.
+  const byId = new Map(found.map((s) => [s.id, s]));
+  const staff = ids.map((id) => byId.get(id)!);
 
   const blocked = staff.filter(
-    (s) => s.approvalState !== "APPROVED" || s.hasPendingEdits,
+    (s) => s.approvalState !== "APPROVED" || s.hasPendingEdits || s.status === "SUSPENDED",
   );
   if (blocked.length) {
+    const n = blocked.length;
     return NextResponse.json(
       {
-        error: "Only approved records without pending edits can be printed",
+        error:
+          n === staff.length
+            ? "None of these cards can be printed yet — they need approval (or are suspended)."
+            : `${n} of ${staff.length} cards aren't approved, have unpublished edits, or are suspended. Select only approved cards to print.`,
         blockedIds: blocked.map((b) => b.id),
       },
       { status: 400 },
@@ -80,14 +99,14 @@ export async function POST(req: NextRequest) {
     bytes = await renderBatchPdf(inputs);
   }
 
-  await prisma.staff.updateMany({
-    where: { id: { in: body.data.ids } },
-    data: { lastPrintedAt: new Date() },
-  });
-
-  for (const s of staff) {
-    await audit(gate.session!.user.id, "PRINTED", s.id, { mode: body.data.mode });
-  }
+  const actorId = gate.session.user.id;
+  const metadata = JSON.stringify({ mode: body.data.mode });
+  await prisma.$transaction([
+    prisma.staff.updateMany({ where: { id: { in: ids } }, data: { lastPrintedAt: new Date() } }),
+    prisma.auditEvent.createMany({
+      data: ids.map((staffId) => ({ actorId, staffId, type: "PRINTED" as const, metadata })),
+    }),
+  ]);
 
   return new NextResponse(Buffer.from(bytes), {
     headers: {

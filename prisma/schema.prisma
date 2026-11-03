@@ -31,6 +31,7 @@ enum FrontTemplate {
   BAR_BLUE_CIRCLE
   BAR_GREEN_CIRCLE
   BAR_GREEN_SQUARE
+  NPERA_GREEN
 }
 
 enum BackTemplate {
@@ -38,6 +39,7 @@ enum BackTemplate {
   BACK_WAVE_BLUE
   BACK_BAR_BLUE
   BACK_BAR_GREEN
+  BACK_NPERA_GREEN
 }
 
 enum AuditType {

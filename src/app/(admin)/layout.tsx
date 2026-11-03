@@ -17,7 +17,7 @@ export default async function AdminLayout({
     <div className="min-h-screen bg-[var(--md-surface)] text-[var(--md-on-surface)]">
       {/* M3 small top app bar — surface container, no rule, 64dp */}
       <header className="sticky top-0 z-40 bg-[var(--md-surface-container)]">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-4 sm:gap-6">
             <Link href="/staff" className="shrink-0">
               <span className="md-label-small block uppercase text-[var(--md-on-surface-variant)]">
@@ -54,7 +54,7 @@ export default async function AdminLayout({
           <AdminNavLinks className="flex gap-2 overflow-x-auto px-4 pb-3 sm:hidden" />
         </Suspense>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         {children}
       </main>
     </div>

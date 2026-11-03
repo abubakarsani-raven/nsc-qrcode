@@ -1,26 +1,36 @@
 "use client";
 
 import {
+  BACK_TEMPLATES,
   FRONT_TEMPLATES,
-  PAGE,
   type BackTemplateId,
   type FrontTemplateId,
 } from "@/lib/id-card/slots.generated";
-import { layoutName } from "@/lib/id-card/name-layout";
+import { layoutFront, type TextRun } from "@/lib/id-card/card-layout";
+import type { CardFontId } from "@/lib/id-card/font-metrics.generated";
 import {
-  CARD_THEMES,
-  ID_TRACKING_EM,
-  NAME_TOP_NUDGE_PT,
-  TITLE_RULE,
-} from "@/lib/id-card/theme";
-import {
-  BASE_PT,
-  DEFAULT_TYPE_SCALE,
-  type CardTypeScale,
+  DEFAULT_TEXT_SETTINGS,
+  type CardTextSettings,
 } from "@/lib/id-card/type-scale";
+import { code128Rects } from "@/lib/barcode/code128";
 import { publicVerifyUrl } from "@/lib/qr";
 import { roundedQrDataUrl } from "@/lib/qr-render";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
+import {
+  PhotoAdjustHitArea,
+  PhotoAdjustImage,
+  type PhotoAdjust,
+} from "@/components/id-card/photo-adjust-layer";
+
+/** Bump when template PNGs are regenerated. */
+const TEMPLATE_VERSION = 18;
+
+const FONT_CSS: Record<CardFontId, { family: string; weight: number }> = {
+  "poppins-regular": { family: "Poppins", weight: 400 },
+  "poppins-bold": { family: "Poppins", weight: 700 },
+  "inter-display-regular": { family: "Inter Display", weight: 400 },
+  "inter-display-extrabold": { family: "Inter Display", weight: 800 },
+};
 
 type Props = {
   side: "front" | "back";
@@ -33,212 +43,241 @@ type Props = {
   idNumber: string;
   qrToken: string;
   photoUrl?: string | null;
+  /** Pixels per point. */
   scale?: number;
-  /** Per-record type sizing for name / designation / ID line. */
-  typeScale?: CardTypeScale;
+  /** Per-record type sizing and name breaking. */
+  text?: CardTextSettings;
+  /** When set, the photo is shown from the original and can be dragged / zoomed. */
+  photoAdjust?: PhotoAdjust;
 };
 
 export function CardPreview(props: Props) {
   const scale = props.scale ?? 2.2;
-  const width = PAGE.width * scale;
-  const height = PAGE.height * scale;
-  const front = FRONT_TEMPLATES[props.frontTemplate];
-  const theme = CARD_THEMES[front.colorMatch];
-  const given = [props.firstName, props.middleName].filter(Boolean).join(" ");
-  const type = props.typeScale ?? DEFAULT_TYPE_SCALE;
-  const name = useMemo(
-    () => layoutName(props.lastName, given, props.frontTemplate, type.name),
-    [props.lastName, given, props.frontTemplate, type.name],
+  return props.side === "back" ? (
+    <CardBack {...props} scale={scale} />
+  ) : (
+    <CardFront {...props} scale={scale} />
   );
-  const designationPt = BASE_PT.designation * type.designation;
-  const idPt = BASE_PT.idNo * type.idNo;
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+}
 
-  useEffect(() => {
-    const url = publicVerifyUrl(props.qrToken, window.location.origin);
-    roundedQrDataUrl(url, 320).then(setQrDataUrl);
-  }, [props.qrToken]);
-
-  if (props.side === "back") {
-    return (
-      <div
-        className="relative overflow-hidden bg-white shadow-lg"
-        style={{ width, height }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={`/id-card/templates/backs/${props.backTemplate}.png?v=17`}
-          alt=""
-          className="absolute inset-0 h-full w-full object-fill"
-        />
-      </div>
-    );
-  }
-
-  // Use measured circular frame (square bbox) — not border-radius:50% on the 4:5 image box (that becomes a tall oval).
-  const frame = front.photoFrame;
-  const photoStyle = {
-    left: frame.x * scale,
-    top: frame.y * scale,
-    width: frame.w * scale,
-    height: frame.h * scale,
-    borderRadius:
-      front.photoMask === "circle"
-        ? "50%"
-        : `${(front.photoRadiusPt ?? 6) * scale}px`,
-    overflow: "hidden" as const,
-    backgroundColor: "#ffffff",
-    // Photo halo matches Canva #D3DCF1 — thin ring, not spread far
-    boxShadow: `0 0 0 ${3.5 * scale}px #D3DCF1`,
-    zIndex: 2,
-  };
-
-  // Sample QR has no white plate — sit modules on the card art with a thin quiet margin.
-  const moduleBox = front.qr.moduleBox;
-  const modulePt = moduleBox.w / 33; // version-4 module pitch
-  const qrPad = 1 * modulePt;
-  const qrStyle = {
-    left: (moduleBox.x - qrPad) * scale,
-    top: (moduleBox.y - qrPad) * scale,
-    width: (moduleBox.w + qrPad * 2) * scale,
-    height: (moduleBox.h + qrPad * 2) * scale,
-    zIndex: 2,
-  };
-
-  const ruleY =
-    (front.designation.y + front.designation.h + TITLE_RULE.offsetPt) * scale;
-  const ruleX = (front.contentAxisX - TITLE_RULE.widthPt / 2) * scale;
-  const ruleW = TITLE_RULE.widthPt * scale;
-  const ruleH = Math.max(1, TITLE_RULE.thicknessPt * scale);
-
-  const idLabel = `ID NO. ${props.idNumber}`;
-  const idFontPx = idPt * scale;
-  const idTrackingPx = idTracking(idLabel, idFontPx, front.idNo.w * scale);
-
+function CardBack(props: Props & { scale: number }) {
+  const back = BACK_TEMPLATES[props.backTemplate];
+  const { width, height } = back.page;
+  const bars = useMemo(
+    () =>
+      back.barcode && props.idNumber.trim()
+        ? code128Rects(props.idNumber.trim(), back.barcode.rect, back.barcode)
+        : [],
+    [back.barcode, props.idNumber],
+  );
   return (
     <div
       className="relative overflow-hidden bg-white shadow-lg"
-      // Card typography is Poppins at its own metrics — never inherit the UI
-      // font stack or its Material letter-spacing.
-      style={{
-        width,
-        height,
-        fontFamily: "Poppins, sans-serif",
-        letterSpacing: "normal",
-      }}
+      style={{ width: width * props.scale, height: height * props.scale }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={`/id-card/templates/fronts/${props.frontTemplate}.png?v=17`}
+        src={`/id-card/templates/backs/${props.backTemplate}.png?v=${TEMPLATE_VERSION}`}
         alt=""
         className="absolute inset-0 h-full w-full object-fill"
       />
-      <div className="absolute" style={photoStyle}>
-        {props.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={props.photoUrl}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-[10px] text-neutral-500">
-            No photo
-          </div>
-        )}
-      </div>
-      {/* One name stack — sample leading ~11pt; never overlap absolute line boxes */}
-      <div
-        className="absolute text-center uppercase"
-        style={{
-          left: front.nameLine1.x * scale,
-          top: (front.nameLine1.y + NAME_TOP_NUDGE_PT) * scale,
-          width: front.nameLine1.w * scale,
-          fontSize: name.fontSizePt * scale,
-          lineHeight: `${name.leadingPt * scale}px`,
-          color: theme.name,
-          zIndex: 3,
-        }}
-      >
-        <div className="whitespace-nowrap font-normal">
-          <span className="font-bold">{name.surname}</span>
-          {name.line1Given ? (
-            <>
-              {" "}
-              <span>{name.line1Given}</span>
-            </>
-          ) : null}
-        </div>
-        {name.line2 ? (
-          <div className="whitespace-nowrap font-normal">{name.line2}</div>
-        ) : null}
-      </div>
-      <div
-        className="absolute whitespace-nowrap text-center uppercase"
-        style={{
-          left: front.designation.x * scale,
-          top: front.designation.y * scale,
-          width: front.designation.w * scale,
-          fontSize: designationPt * scale,
-          letterSpacing: "normal",
-          color: theme.designation,
-          zIndex: 3,
-        }}
-      >
-        {props.designation}
-      </div>
-      {/* Single rule under designation (replaces the erased line in template art) */}
-      <div
-        className="absolute"
-        style={{
-          left: ruleX,
-          top: ruleY,
-          width: ruleW,
-          height: ruleH,
-          backgroundColor: theme.rule,
-          zIndex: 3,
-        }}
-      />
-      <div
-        className="absolute whitespace-nowrap text-center font-bold"
-        style={{
-          left: (front.contentAxisX - front.idNo.w / 2) * scale,
-          top: front.idNo.y * scale,
-          width: front.idNo.w * scale,
-          fontSize: idFontPx,
-          letterSpacing: idTrackingPx,
-          color: theme.idNo,
-          zIndex: 3,
-        }}
-      >
-        {/* letter-spacing also trails the last glyph — pull it back so the
-            centred line sits on the same axis the PDF stamps it on. */}
-        <span style={{ marginRight: -idTrackingPx }}>
-          ID NO. {props.idNumber}
-        </span>
-      </div>
-      {qrDataUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={qrDataUrl}
-          alt="QR"
-          className="absolute"
-          style={qrStyle}
-        />
+      {bars.length ? (
+        <svg
+          className="absolute inset-0 h-full w-full"
+          viewBox={`0 0 ${width} ${height}`}
+          aria-label={`Barcode ${props.idNumber}`}
+        >
+          {bars.map((bar, i) => (
+            <rect
+              key={i}
+              x={bar.x}
+              y={bar.y}
+              width={bar.w}
+              height={bar.h}
+              fill={back.barcode!.color}
+              shapeRendering="crispEdges"
+            />
+          ))}
+        </svg>
       ) : null}
     </div>
   );
 }
 
-/** Sample tracking on the ID line, tightened only if the number would overflow. */
-function idTracking(text: string, fontSizePx: number, maxWidthPx: number) {
-  if (text.length < 2) return 0;
-  let natural = 0;
-  for (const ch of text) {
-    natural += ch === " " ? fontSizePx * 0.28 : fontSizePx * 0.58;
-  }
-  const spacing = ID_TRACKING_EM * fontSizePx;
-  const gaps = text.length - 1;
-  if (natural + spacing * gaps <= maxWidthPx) return spacing;
-  return Math.max(0, (maxWidthPx - natural) / gaps);
+function CardFront(props: Props & { scale: number }) {
+  const front = FRONT_TEMPLATES[props.frontTemplate];
+  const { width, height } = front.page;
+  const clipId = useId();
+  const layout = useMemo(
+    () =>
+      layoutFront({
+        frontTemplate: props.frontTemplate,
+        firstName: props.firstName,
+        middleName: props.middleName,
+        lastName: props.lastName,
+        designation: props.designation,
+        idNumber: props.idNumber,
+        text: props.text ?? DEFAULT_TEXT_SETTINGS,
+      }),
+    [
+      props.frontTemplate,
+      props.firstName,
+      props.middleName,
+      props.lastName,
+      props.designation,
+      props.idNumber,
+      props.text,
+    ],
+  );
+
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const hasQr = front.qr !== null;
+  useEffect(() => {
+    if (!hasQr) return;
+    const url = publicVerifyUrl(props.qrToken, window.location.origin);
+    roundedQrDataUrl(url, 320).then(setQrDataUrl);
+  }, [props.qrToken, hasQr]);
+
+  const frame = front.photoFrame;
+  const radius = front.photoMask === "circle" ? frame.w / 2 : (front.photoRadiusPt ?? 6);
+  const halo = front.halo;
+
+  // Sample QR has no white plate — sit modules on the card art with a thin quiet margin.
+  const qrBox = front.qr
+    ? (() => {
+        const m = front.qr.moduleBox;
+        const pad = m.w / 33;
+        return { x: m.x - pad, y: m.y - pad, w: m.w + pad * 2, h: m.h + pad * 2 };
+      })()
+    : null;
+
+  return (
+    <div
+      className="relative overflow-hidden bg-white shadow-lg"
+      style={{ width: width * props.scale, height: height * props.scale }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/id-card/templates/fronts/${props.frontTemplate}.png?v=${TEMPLATE_VERSION}`}
+        alt=""
+        className="absolute inset-0 h-full w-full object-fill"
+      />
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${props.lastName} ${props.firstName} — ${props.designation}`}
+      >
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={frame.x} y={frame.y} width={frame.w} height={frame.h} rx={radius} />
+          </clipPath>
+        </defs>
+
+        {halo?.position === "outside" ? (
+          <rect
+            x={frame.x - halo.pt}
+            y={frame.y - halo.pt}
+            width={frame.w + halo.pt * 2}
+            height={frame.h + halo.pt * 2}
+            rx={radius + halo.pt}
+            fill={halo.color}
+          />
+        ) : null}
+        <g clipPath={`url(#${clipId})`}>
+          <rect x={frame.x} y={frame.y} width={frame.w} height={frame.h} fill="#f1f1f1" />
+          {props.photoAdjust ? null : props.photoUrl ? (
+            <image
+              href={props.photoUrl}
+              x={frame.x}
+              y={frame.y}
+              width={frame.w}
+              height={frame.h}
+              preserveAspectRatio="xMidYMid slice"
+            />
+          ) : (
+            <text
+              x={frame.x + frame.w / 2}
+              y={frame.y + frame.h / 2}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={4.5}
+              fill="#737373"
+              fontFamily="sans-serif"
+            >
+              No photo
+            </text>
+          )}
+        </g>
+        {props.photoAdjust ? (
+          <PhotoAdjustImage adjust={props.photoAdjust} frame={frame} clipId={clipId} />
+        ) : null}
+        {halo?.position === "inside" ? (
+          <rect
+            x={frame.x + halo.pt / 2}
+            y={frame.y + halo.pt / 2}
+            width={frame.w - halo.pt}
+            height={frame.h - halo.pt}
+            rx={Math.max(0, radius - halo.pt / 2)}
+            fill="none"
+            stroke={halo.color}
+            strokeWidth={halo.pt}
+            pointerEvents="none"
+          />
+        ) : null}
+
+        {layout.runs.map((run, i) => (
+          <SvgRun key={i} run={run} />
+        ))}
+        <rect
+          x={layout.rule.x}
+          y={layout.rule.y}
+          width={layout.rule.w}
+          height={layout.rule.h}
+          fill={layout.rule.color}
+        />
+
+        {qrBox && qrDataUrl ? (
+          <image href={qrDataUrl} x={qrBox.x} y={qrBox.y} width={qrBox.w} height={qrBox.h} />
+        ) : null}
+        {props.photoAdjust ? (
+          <PhotoAdjustHitArea
+            adjust={props.photoAdjust}
+            frame={frame}
+            page={{ w: width, h: height }}
+            radius={radius}
+          />
+        ) : null}
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * One text run with every glyph pinned to the layout's x — the browser gets no
+ * say in kerning, tracking or space collapsing, so it matches the PDF.
+ */
+function SvgRun({ run }: { run: TextRun }) {
+  const chars = Array.from(run.text);
+  const kept = chars
+    .map((ch, i) => ({ ch, x: run.glyphX[i] }))
+    .filter((g) => g.ch !== " ");
+  const css = FONT_CSS[run.font];
+  return (
+    <text
+      x={kept.map((g) => g.x.toFixed(3)).join(" ")}
+      y={run.baseline}
+      fontFamily={`"${css.family}", sans-serif`}
+      fontWeight={css.weight}
+      fontSize={run.sizePt}
+      fill={run.color}
+      style={{
+        fontKerning: "none",
+        fontFeatureSettings: '"liga" 0, "calt" 0',
+        letterSpacing: 0,
+      }}
+    >
+      {kept.map((g) => g.ch).join("")}
+    </text>
+  );
 }

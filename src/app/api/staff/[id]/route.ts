@@ -1,53 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requirePermission, requireSession } from "@/lib/session";
 import { can } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { requiresReapproval } from "@/lib/staff";
-import { parseTypeScale, serializeTypeScale } from "@/lib/id-card/type-scale";
-import type { Role } from "@/generated/prisma/client";
-
-const patchSchema = z.object({
-  idNumber: z.string().min(1).optional(),
-  firstName: z.string().min(1).optional(),
-  middleName: z.string().nullable().optional(),
-  lastName: z.string().min(1).optional(),
-  designation: z.string().min(1).optional(),
-  posting: z.string().nullable().optional(),
-  department: z.string().nullable().optional(),
-  dateIssued: z.string().nullable().optional(),
-  officeLine: z.string().nullable().optional(),
-  emergencyContactName: z.string().nullable().optional(),
-  emergencyContactPhone: z.string().nullable().optional(),
-  bloodGroup: z.string().nullable().optional(),
-  genotype: z.string().nullable().optional(),
-  frontTemplate: z
-    .enum([
-      "WAVE_GREEN",
-      "WAVE_BLUE",
-      "BAR_BLUE_SQUARE",
-      "BAR_BLUE_CIRCLE",
-      "BAR_GREEN_CIRCLE",
-      "BAR_GREEN_SQUARE",
-    ])
-    .optional(),
-  backTemplate: z
-    .enum([
-      "BACK_WAVE_GREEN",
-      "BACK_WAVE_BLUE",
-      "BACK_BAR_BLUE",
-      "BACK_BAR_GREEN",
-    ])
-    .optional(),
-  cardTypeScale: z.string().nullable().optional(),
-});
+import { requiresReapproval, withoutMedical } from "@/lib/staff";
+import { parseTextSettings, serializeTextSettings } from "@/lib/id-card/type-scale";
+import { parseJson, prismaErrorResponse } from "@/lib/api";
+import { staffPatchSchema } from "@/lib/staff-schema";
+import type { Staff } from "@/generated/prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, ctx: Ctx) {
   const gate = await requireSession();
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
   const { id } = await ctx.params;
 
   const staff = await prisma.staff.findUnique({
@@ -64,61 +30,83 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   });
   if (!staff) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const role = gate.session!.user.role as Role;
-  if (!can(role, "medical")) {
-    const { bloodGroup: _b, genotype: _g, ...rest } = staff;
-    return NextResponse.json({ staff: rest });
+  if (!can(gate.session.user.role, "medical")) {
+    return NextResponse.json({ staff: withoutMedical(staff) });
   }
   return NextResponse.json({ staff });
 }
 
+/** Compare a patch value with the stored one, treating Dates by value. */
+function sameValue(a: unknown, b: unknown) {
+  if (a instanceof Date || b instanceof Date) {
+    const ta = a instanceof Date ? a.getTime() : a;
+    const tb = b instanceof Date ? b.getTime() : b;
+    return ta === tb;
+  }
+  return (a ?? null) === (b ?? null);
+}
+
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   const gate = await requirePermission("createEdit");
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
   const { id } = await ctx.params;
 
-  const body = patchSchema.safeParse(await req.json());
-  if (!body.success) {
-    return NextResponse.json({ error: body.error.flatten() }, { status: 400 });
-  }
+  const body = await parseJson(req, staffPatchSchema);
+  if (body.error) return body.error;
 
   const existing = await prisma.staff.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (body.data.idNumber && body.data.idNumber !== existing.idNumber) {
+  const data: Partial<Staff> = { ...body.data };
+  if (body.data.cardTypeScale !== undefined) {
+    // Round-trip through the parser so only clamped, known settings are stored.
+    data.cardTypeScale = serializeTextSettings(parseTextSettings(body.data.cardTypeScale));
+  }
+  const medical = can(gate.session.user.role, "medical");
+  if (!medical) {
+    delete data.bloodGroup;
+    delete data.genotype;
+  }
+  const respond = (staff: Staff | null, extra: Record<string, unknown> = {}) => {
+    if (staff && !medical) return NextResponse.json({ staff: withoutMedical(staff), ...extra });
+    return NextResponse.json({ staff, ...extra });
+  };
+
+  // Only what actually changed — keeps the audit trail meaningful and avoids
+  // flagging an approved card for re-approval on a no-op save.
+  const changed = (Object.keys(data) as (keyof Staff)[]).filter(
+    (k) => data[k] !== undefined && !sameValue(data[k], existing[k]),
+  );
+  if (!changed.length) {
+    const staff = await prisma.staff.findUnique({ where: { id }, include: { published: true } });
+    return respond(staff, { unchanged: true });
+  }
+  const patch = Object.fromEntries(changed.map((k) => [k, data[k]])) as Partial<Staff>;
+
+  if (patch.idNumber) {
     const clash = await prisma.staff.findUnique({
-      where: { idNumber: body.data.idNumber },
+      where: { idNumber: patch.idNumber },
+      select: { id: true },
     });
-    if (clash) {
+    if (clash && clash.id !== id) {
       return NextResponse.json({ error: "ID number already exists" }, { status: 409 });
     }
   }
 
-  const role = gate.session!.user.role as Role;
-  const data = { ...body.data };
-  if (data.cardTypeScale !== undefined) {
-    // Round-trip through the parser so only clamped, known slots are stored.
-    data.cardTypeScale = serializeTypeScale(parseTypeScale(data.cardTypeScale));
-  }
-  if (!can(role, "medical")) {
-    delete data.bloodGroup;
-    delete data.genotype;
-  }
-
   const needsReapproval =
-    existing.approvalState === "APPROVED" &&
-    requiresReapproval(existing, data as Partial<typeof existing>);
+    existing.approvalState === "APPROVED" && requiresReapproval(existing, patch);
 
-  const staff = await prisma.staff.update({
-    where: { id },
-    data: {
-      ...data,
-      ...(needsReapproval ? { hasPendingEdits: true } : {}),
-    },
-    include: { published: true },
-  });
-
-  await audit(gate.session!.user.id, "EDITED", staff.id, { fields: Object.keys(data) });
-
-  return NextResponse.json({ staff });
+  try {
+    const staff = await prisma.staff.update({
+      where: { id },
+      data: { ...patch, ...(needsReapproval ? { hasPendingEdits: true } : {}) },
+      include: { published: true },
+    });
+    await audit(gate.session.user.id, "EDITED", staff.id, { fields: changed });
+    return respond(staff);
+  } catch (err) {
+    const mapped = prismaErrorResponse(err);
+    if (mapped) return mapped;
+    throw err;
+  }
 }

@@ -2,40 +2,61 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { downloadBlob, errorMessage, networkMessage, readJson } from "@/lib/client-api";
+import { useRefresh } from "@/lib/use-refresh";
+import { RefreshIndicator } from "@/components/refresh-indicator";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/id-card/CardPreview";
 import { TypeScaleControl } from "@/components/id-card/type-scale-control";
-import { layoutName, nameOverflows } from "@/lib/id-card/name-layout";
+import { layoutFront } from "@/lib/id-card/card-layout";
 import {
-  parseTypeScale,
-  serializeTypeScale,
-  type CardTypeScale,
+  parseTextSettings,
+  serializeTextSettings,
+  type CardTextSettings,
 } from "@/lib/id-card/type-scale";
-import { PhotoCropper } from "@/components/photo/PhotoCropper";
+import { PhotoCropper, type SavedCrop } from "@/components/photo/PhotoCropper";
 import { useLoading } from "@/lib/loading-context";
 import { normalizePhoto } from "@/lib/photo/client-resize";
 import {
-  BACK_TEMPLATES,
+  clampCrop,
+  cropDpi,
+  cropZoom,
+  defaultCrop,
+  maxZoom,
+  rotatedBounds,
+  roundCrop,
+  zoomCrop,
+  type CardCrop,
+  type Size,
+} from "@/lib/photo/card-crop";
+import { PHOTO_DPI_FLOOR } from "@/lib/id-card/slots.generated";
+import {
   FRONT_DEFAULT_BACK,
-  FRONT_TEMPLATES,
+  brandMismatch,
+  frontHasQr,
   nameColorMismatch,
   type BackTemplateId,
   type FrontTemplateId,
 } from "@/lib/id-card/slots.generated";
-import {
-  BACK_TEMPLATE_LABELS,
-  FRONT_TEMPLATE_LABELS,
-} from "@/lib/id-card/template-labels";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
+import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
+import Collapse from "@mui/material/Collapse";
+import Slider from "@mui/material/Slider";
+import Stack from "@mui/material/Stack";
+import Step from "@mui/material/Step";
+import StepLabel from "@mui/material/StepLabel";
+import Stepper from "@mui/material/Stepper";
+import TextField from "@mui/material/TextField";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { TemplatePicker } from "@/components/id-card/template-picker";
 import type { Area } from "react-easy-crop";
 
 type StaffData = {
@@ -71,40 +92,50 @@ type StaffData = {
   canQr?: boolean;
 };
 
-function StepPill({
-  label,
-  state,
-}: {
-  label: string;
-  state: "done" | "current" | "todo" | "blocked";
-}) {
-  // Same colour language as the stage rail on the staff list: hull green is
-  // finished work, channel blue is where you are now, flag red is blocked.
-  const styles = {
-    done: "bg-[var(--md-primary-container)] text-[var(--md-on-primary-container)]",
-    current: "bg-[var(--md-tertiary)] text-[var(--md-on-tertiary)]",
-    todo: "border border-[var(--md-outline)] text-[var(--md-on-surface-variant)]",
-    blocked:
-      "bg-[var(--md-error-container)] text-[var(--md-on-error-container)]",
-  } as const;
-  return (
-    <span
-      className={`inline-flex h-8 items-center rounded-[var(--md-shape-sm)] px-3 text-sm font-medium tracking-[0.007em] ${styles[state]}`}
-    >
-      {label}
-    </span>
-  );
+/** API rows carry full ISO timestamps; the date input needs YYYY-MM-DD. */
+function fromServer(staff: Record<string, unknown>): Partial<StaffData> {
+  const out = { ...staff } as Partial<StaffData> & Record<string, unknown>;
+  if (typeof out.dateIssued === "string") out.dateIssued = out.dateIssued.slice(0, 10);
+  // Server-only relations shouldn't leak into form state.
+  delete out.published;
+  delete out.auditEvents;
+  delete out.approvedBy;
+  return out;
+}
+
+/** Fields whose edits mean the form has unsaved changes. */
+const EDITABLE_KEYS = [
+  "idNumber",
+  "firstName",
+  "middleName",
+  "lastName",
+  "designation",
+  "posting",
+  "department",
+  "dateIssued",
+  "officeLine",
+  "emergencyContactName",
+  "emergencyContactPhone",
+  "bloodGroup",
+  "genotype",
+  "frontTemplate",
+  "backTemplate",
+] as const;
+
+function snapshot(f: StaffData, text: CardTextSettings) {
+  return JSON.stringify([EDITABLE_KEYS.map((k) => f[k] ?? ""), serializeTextSettings(text)]);
 }
 
 export function StaffEditor({ initial }: { initial?: StaffData }) {
   const router = useRouter();
+  const { refresh, refreshing } = useRefresh();
   const searchParams = useSearchParams();
   const { startLoading, setProgress, stopLoading } = useLoading();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoSectionRef = useRef<HTMLDivElement>(null);
 
-  const [typeScale, setTypeScale] = useState<CardTypeScale>(() =>
-    parseTypeScale(initial?.cardTypeScale),
+  const [textSettings, setTextSettings] = useState<CardTextSettings>(() =>
+    parseTextSettings(initial?.cardTypeScale),
   );
   const [form, setForm] = useState<StaffData>(
     initial ?? {
@@ -126,29 +157,56 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   const [suspendOpen, setSuspendOpen] = useState(false);
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [regenOpen, setRegenOpen] = useState(false);
+  const [adjust, setAdjust] = useState<{ src: string; natural: Size; crop: CardCrop } | null>(null);
+  const [adjustLoading, setAdjustLoading] = useState(false);
+  const [adjustSaving, setAdjustSaving] = useState(false);
+  /** "recrop" re-cuts the stored original; "new" uploads a newly chosen file. */
+  const [cropMode, setCropMode] = useState<"new" | "recrop">("new");
+  const [saving, setSaving] = useState(false);
+  const previewCardRef = useRef<HTMLDivElement>(null);
+
+  // Unsaved-changes tracking: compare against what the server last confirmed.
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    snapshot(form, parseTextSettings(initial?.cardTypeScale)),
+  );
+  const dirty = snapshot(form, textSettings) !== savedSnapshot;
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const mismatch = nameColorMismatch(form.frontTemplate, form.backTemplate);
-  // Fitted size at 100%, plus whether the current nudge pushes it off the card.
-  const nameGiven = [form.firstName, form.middleName]
-    .filter(Boolean)
-    .join(" ");
-  const nameLayoutAtDefault = useMemo(
-    () => layoutName(form.lastName, nameGiven, form.frontTemplate),
-    [form.lastName, nameGiven, form.frontTemplate],
-  );
-  const nameTooWide = useMemo(
+  const crossBrand = brandMismatch(form.frontTemplate, form.backTemplate);
+  const hasQr = frontHasQr(form.frontTemplate);
+  const cardLayout = useMemo(
     () =>
-      Boolean(
-        nameOverflows(
-          layoutName(form.lastName, nameGiven, form.frontTemplate, typeScale.name),
-          form.frontTemplate,
-        ),
-      ),
-    [form.lastName, nameGiven, form.frontTemplate, typeScale.name],
+      layoutFront({
+        frontTemplate: form.frontTemplate,
+        firstName: form.firstName || "FIRST",
+        middleName: form.middleName,
+        lastName: form.lastName || "SURNAME",
+        designation: form.designation || "DESIGNATION",
+        idNumber: form.idNumber || "0000000000",
+        text: textSettings,
+      }),
+    [
+      form.frontTemplate,
+      form.firstName,
+      form.middleName,
+      form.lastName,
+      form.designation,
+      form.idNumber,
+      textSettings,
+    ],
   );
+  const textOverflow =
+    cardLayout.name.overflow || cardLayout.designation.overflow || cardLayout.idNo.overflow;
   const hasPhoto = Boolean(form.photoPreviewKey);
-  const isApproved =
-    form.approvalState === "APPROVED" && !form.hasPendingEdits;
+  const isApproved = form.approvalState === "APPROVED" && !form.hasPendingEdits;
   const printable = isApproved && hasPhoto && form.status !== "SUSPENDED";
 
   const photoUrl = useMemo(() => {
@@ -183,7 +241,9 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   }
 
   async function save() {
-    startLoading(form.id ? "Updating staff..." : "Creating staff record...", 5);
+    if (saving) return; // double-click / Enter-spam guard
+    setSaving(true);
+    startLoading(form.id ? "Saving changes…" : "Creating staff record…", 5);
 
     try {
       const payload = {
@@ -198,83 +258,87 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         officeLine: form.officeLine || null,
         emergencyContactName: form.emergencyContactName || null,
         emergencyContactPhone: form.emergencyContactPhone || null,
-        bloodGroup: form.bloodGroup || null,
-        genotype: form.genotype || null,
+        ...(form.canMedical !== false
+          ? { bloodGroup: form.bloodGroup || null, genotype: form.genotype || null }
+          : {}),
         frontTemplate: form.frontTemplate,
         backTemplate: form.backTemplate,
-        cardTypeScale: serializeTypeScale(typeScale),
+        cardTypeScale: serializeTextSettings(textSettings),
       };
 
       setProgress(30);
-
       const res = await fetch(form.id ? `/api/staff/${form.id}` : "/api/staff", {
         method: form.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
       setProgress(70);
-
-      const data = await res.json();
-      if (!res.ok) {
-        stopLoading();
-        toast.error(typeof data.error === "string" ? data.error : "Save failed");
+      const data = await readJson<{ staff?: Record<string, unknown>; unchanged?: boolean }>(res);
+      if (!res.ok || !data.staff) {
+        toast.error(errorMessage(res, data, "Save failed"));
         return;
       }
-
       setProgress(100);
-      stopLoading();
 
       if (!form.id) {
+        setSavedSnapshot(snapshot(form, textSettings)); // don't warn on the redirect
         toast.success("Staff created — add a photo next");
         router.push(`/staff/${data.staff.id}?photo=1`);
       } else {
-        setForm((f) => ({ ...f, ...data.staff }));
-        toast.success("Saved");
-        router.refresh();
+        const next = { ...form, ...fromServer(data.staff) };
+        setForm(next);
+        setSavedSnapshot(snapshot(next, textSettings));
+        toast.success(data.unchanged ? "No changes to save" : "Saved");
+        if (!data.unchanged) refresh();
       }
     } catch (error) {
+      toast.error(networkMessage(error, "Save failed"));
+    } finally {
       stopLoading();
-      toast.error(error instanceof Error ? error.message : "Save failed");
+      setSaving(false);
     }
   }
 
   async function approve() {
-    startLoading("Approving and publishing...", 8);
+    if (dirty) {
+      toast.warning("Save your changes before approving");
+      return;
+    }
+    startLoading("Approving and publishing…", 8);
     try {
       setProgress(50);
       const res = await fetch(`/api/staff/${form.id}/approve`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        stopLoading();
-        toast.error(data.error || "Approve failed");
+      const data = await readJson<{ staff?: Record<string, unknown> }>(res);
+      if (!res.ok || !data.staff) {
+        toast.error(errorMessage(res, data, "Approve failed"));
         return;
       }
       setProgress(100);
-      stopLoading();
-      setForm((f) => ({ ...f, ...data.staff }));
+      setForm((f) => ({ ...f, ...fromServer(data.staff!) }));
       toast.success("Approved and published");
-      router.refresh();
+      refresh();
     } catch (error) {
+      toast.error(networkMessage(error, "Approve failed"));
+    } finally {
       stopLoading();
-      toast.error(error instanceof Error ? error.message : "Approve failed");
     }
   }
 
+  // Errors thrown here are caught and shown by ConfirmDialog.
   async function setStatus(status: "ACTIVE" | "SUSPENDED") {
     const res = await fetch(`/api/staff/${form.id}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error || "Status update failed");
+    const data = await readJson<{ staff?: Record<string, unknown> }>(res);
+    if (!res.ok || !data.staff) {
+      toast.error(errorMessage(res, data, "Status update failed"));
       return;
     }
-    setForm((f) => ({ ...f, ...data.staff }));
+    setForm((f) => ({ ...f, status: data.staff!.status as StaffData["status"] }));
     toast.success(status === "SUSPENDED" ? "Staff suspended" : "Staff reactivated");
-    router.refresh();
+    refresh();
   }
 
   async function regenerateQr() {
@@ -283,19 +347,19 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm: "REGENERATE" }),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error || "Failed to regenerate QR");
+    const data = await readJson<{ staff?: { qrToken: string }; warning?: string | null }>(res);
+    if (!res.ok || !data.staff) {
+      toast.error(errorMessage(res, data, "Failed to regenerate QR"));
       return;
     }
-    setForm((f) => ({ ...f, qrToken: data.staff.qrToken }));
+    setForm((f) => ({ ...f, qrToken: data.staff!.qrToken }));
     if (data.warning) toast.warning(data.warning);
     else toast.success("QR regenerated");
-    router.refresh();
+    refresh();
   }
 
   async function printOne() {
-    startLoading("Preparing PDF...", 12);
+    startLoading("Preparing PDF…", 12);
     try {
       setProgress(40);
       const res = await fetch("/api/staff/export", {
@@ -304,25 +368,19 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         body: JSON.stringify({ ids: [form.id], mode: "single" }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        stopLoading();
-        toast.error(data.error || "Print blocked");
+        toast.error(errorMessage(res, await readJson(res), "Print blocked"));
         return;
       }
       setProgress(90);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${form.idNumber}-id-card.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(await res.blob(), `${form.idNumber}-id-card.pdf`);
       setProgress(100);
-      stopLoading();
+      setForm((f) => ({ ...f, lastPrintedAt: new Date().toISOString() }));
       toast.success("PDF download started");
+      refresh();
     } catch (error) {
+      toast.error(networkMessage(error, "PDF failed"));
+    } finally {
       stopLoading();
-      toast.error(error instanceof Error ? error.message : "PDF failed");
     }
   }
 
@@ -336,9 +394,14 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
   }
 
   async function onFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast.error("That file isn't an image — choose a JPG, PNG or WebP photo");
+      return;
+    }
     try {
       const normalized = await normalizePhoto(file);
       setRawFile(normalized.file);
+      setCropMode("new");
       setCropSrc(normalized.dataUrl);
       if (normalized.resized) {
         const from = (normalized.originalBytes / 1024 / 1024).toFixed(1);
@@ -350,22 +413,53 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
     }
   }
 
-  async function saveCrop(area: Area, zoom: number) {
-    if (!form.id || !rawFile) return;
+  function closeCropper() {
+    setCropSrc(null);
+    setRawFile(null);
+    setCropMode("new");
+  }
 
-    startLoading("Processing photo...", 10);
+  /** Shared tail of both photo-save paths. */
+  function photoSaved(data: { staff?: Record<string, unknown>; dpi?: number }, message: string) {
+    if (data.staff) setForm((f) => ({ ...f, ...fromServer(data.staff!) }));
+    setPhotoRev((n) => n + 1);
+    toast.success(`${message} (${Math.round(data.dpi ?? 0)} dpi)`);
+    if (searchParams.get("photo")) router.replace(`/staff/${form.id}`, { scroll: false });
+    refresh();
+  }
 
+  async function saveCrop(area: Area, zoom: number, rotation: number) {
+    if (!form.id) return;
+    const crop = { x: area.x, y: area.y, width: area.width, height: area.height, zoom, rotation };
+
+    // Re-cropping the stored original: no upload, just a new cut on the server.
+    if (cropMode === "recrop") {
+      startLoading("Saving photo…", 6);
+      try {
+        const res = await fetch(`/api/staff/${form.id}/photo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ crop, reposition: true }),
+        });
+        const data = await readJson<{ staff?: Record<string, unknown>; dpi?: number }>(res);
+        if (!res.ok) {
+          toast.error(errorMessage(res, data, "Photo save failed"));
+          return;
+        }
+        closeCropper();
+        photoSaved(data, "Photo updated");
+      } catch (error) {
+        toast.error(networkMessage(error, "Photo save failed"));
+      } finally {
+        stopLoading();
+      }
+      return;
+    }
+
+    if (!rawFile) return;
+    startLoading("Uploading photo…", 10);
     try {
-      const crop = {
-        x: area.x,
-        y: area.y,
-        width: area.width,
-        height: area.height,
-        zoom,
-      };
-
       setProgress(10);
-
       const signRes = await fetch(`/api/photos/sign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -374,7 +468,13 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
 
       let res: Response;
       if (signRes.ok) {
-        const sign = await signRes.json();
+        const sign = await readJson<{
+          apiKey: string;
+          timestamp: number;
+          publicId: string;
+          signature: string;
+          uploadUrl: string;
+        }>(signRes);
 
         const cloud = new FormData();
         cloud.append("file", rawFile);
@@ -385,439 +485,495 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         cloud.append("invalidate", "true");
         cloud.append("signature", sign.signature);
 
-        const upload = await fetch(sign.uploadUrl, {
-          method: "POST",
-          body: cloud,
-        });
+        const upload = await fetch(sign.uploadUrl, { method: "POST", body: cloud });
         if (!upload.ok) {
-          const detail = await upload.text();
-          stopLoading();
-          toast.error(`Upload to Cloudinary failed: ${detail.slice(0, 200)}`);
+          const detail = await readJson<{ error?: { message?: string } }>(upload);
+          toast.error(
+            `Photo upload failed${detail.error?.message ? `: ${detail.error.message}` : ""}`,
+          );
           return;
         }
 
         setProgress(60);
-
         res = await fetch(`/api/staff/${form.id}/photo`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ crop, uploaded: true }),
         });
-      } else {
+      } else if (signRes.status === 501) {
+        // Cloudinary not configured (local dev): send the file to the server.
         const fd = new FormData();
         fd.append("file", rawFile);
         fd.append("crop", JSON.stringify(crop));
         setProgress(40);
-        res = await fetch(`/api/staff/${form.id}/photo`, {
-          method: "POST",
-          body: fd,
-        });
+        res = await fetch(`/api/staff/${form.id}/photo`, { method: "POST", body: fd });
+      } else {
+        toast.error(errorMessage(signRes, await readJson(signRes), "Could not start the upload"));
+        return;
       }
 
       setProgress(80);
-
       if (res.status === 413) {
-        stopLoading();
         toast.error(
           "Photo too large for the server to accept. Cloudinary upload is not configured on this deployment.",
         );
         return;
       }
-
-      const data = await res.json().catch(() => ({}) as { error?: string });
+      const data = await readJson<{ staff?: Record<string, unknown>; dpi?: number }>(res);
       if (!res.ok) {
-        stopLoading();
-        toast.error(data.error || `Photo save failed (${res.status})`);
+        toast.error(errorMessage(res, data, `Photo save failed`));
         return;
       }
 
       setProgress(100);
-      stopLoading();
-
-      setForm((f) => ({ ...f, ...data.staff }));
-      setPhotoRev((n) => n + 1);
-      setCropSrc(null);
-      setRawFile(null);
-      toast.success(`Photo saved (${Math.round(data.dpi)} dpi)`);
-      router.replace(`/staff/${form.id}`);
-      router.refresh();
+      closeCropper();
+      photoSaved(data, "Photo saved");
     } catch (error) {
+      toast.error(networkMessage(error, "Photo save failed"));
+    } finally {
       stopLoading();
-      toast.error(error instanceof Error ? error.message : "Photo save failed");
     }
   }
 
-  async function editPositioning() {
+  /** Reopen the cropper on the stored original, framed exactly as last saved. */
+  function editPositioning() {
     if (!form.id || !form.photoOriginalKey) return;
+    setRawFile(null);
+    setCropMode("recrop");
+    setCropSrc(`/api/photos/${form.id}/${form.photoOriginalKey}?r=${photoRev}`);
+  }
+
+  function startAdjust() {
+    if (!form.id || !form.photoOriginalKey || adjustLoading) return;
+    const src = `/api/photos/${form.id}/${form.photoOriginalKey}?r=${photoRev}`;
+    setAdjustLoading(true);
+    const img = new Image();
+    img.onload = () => {
+      const natural = { w: img.naturalWidth, h: img.naturalHeight };
+      const saved = parsedCrop as CardCrop | undefined;
+      const bounds = rotatedBounds(natural, saved?.rotation);
+      const crop =
+        saved && saved.width > 0 && saved.height > 0
+          ? clampCrop(saved, bounds)
+          : defaultCrop(bounds, saved?.rotation);
+      setSide("front");
+      setAdjust({ src, natural, crop });
+      setAdjustLoading(false);
+      // Bring the card (and its controls) into view — on phones it may be off-screen.
+      requestAnimationFrame(() =>
+        previewCardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+      );
+    };
+    img.onerror = () => {
+      setAdjustLoading(false);
+      toast.error("Could not load the original photo");
+    };
+    img.src = src;
+  }
+
+  async function saveAdjust() {
+    if (!form.id || !adjust || adjustSaving) return;
+    const bounds = rotatedBounds(adjust.natural, adjust.crop.rotation);
+    setAdjustSaving(true);
     try {
-      const res = await fetch(`/api/photos/${form.id}/${form.photoOriginalKey}`);
-      if (res.ok) {
-        const blob = await res.blob();
-        const file = new File([blob], form.photoOriginalKey, { type: blob.type });
-        onFile(file);
-      } else {
-        toast.error("Failed to load photo for editing");
+      const res = await fetch(`/api/staff/${form.id}/photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crop: { ...roundCrop(adjust.crop, bounds), zoom: cropZoom(adjust.crop, bounds) },
+          reposition: true,
+        }),
+      });
+      const data = await readJson<{ staff?: Record<string, unknown>; dpi?: number }>(res);
+      if (!res.ok) {
+        toast.error(errorMessage(res, data, "Could not save position"));
+        return;
       }
-    } catch {
-      toast.error("Failed to load photo for editing");
+      setAdjust(null);
+      photoSaved(data, "Photo position saved");
+    } catch (error) {
+      toast.error(networkMessage(error, "Could not save position"));
+    } finally {
+      setAdjustSaving(false);
     }
   }
 
-  const detailsDone = Boolean(
-    form.idNumber && form.firstName && form.lastName && form.designation,
-  );
+  // Enter saves, Escape cancels while adjusting on the card.
+  const saveAdjustRef = useRef(saveAdjust);
+  saveAdjustRef.current = saveAdjust;
+  useEffect(() => {
+    if (!adjust) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(t.tagName)) return;
+      if (e.key === "Escape") setAdjust(null);
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        void saveAdjustRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [adjust]);
+
+  const adjustBounds = adjust ? rotatedBounds(adjust.natural, adjust.crop.rotation) : null;
+
+  const detailsDone = Boolean(form.idNumber && form.firstName && form.lastName && form.designation);
+
+  const steps: { label: string; state: "done" | "current" | "todo" | "blocked" }[] = [
+    { label: "Details", state: detailsDone ? "done" : "current" },
+    { label: "Photo", state: !form.id ? "todo" : hasPhoto ? "done" : "current" },
+    { label: "Approve", state: !hasPhoto ? "todo" : isApproved ? "done" : "current" },
+    {
+      label: "Print",
+      state: form.status === "SUSPENDED" ? "blocked" : printable ? "done" : "todo",
+    },
+  ];
+  const activeStep = steps.findIndex((st) => st.state === "current");
+
+  const fields = [
+    ["idNumber", "ID number"],
+    ["lastName", "Surname (bold on card)"],
+    ["firstName", "First name"],
+    ["middleName", "Middle name"],
+    ["designation", "Designation"],
+    ["posting", "Posting / job title"],
+    ["department", "Department"],
+    ["dateIssued", "Date issued"],
+    ["officeLine", "Office line"],
+    ["emergencyContactName", "Emergency contact"],
+    ["emergencyContactPhone", "Emergency phone"],
+    ...(form.canMedical !== false
+      ? ([
+          ["bloodGroup", "Blood group (admin only)"],
+          ["genotype", "Genotype (admin only)"],
+        ] as const)
+      : []),
+  ] as const;
+
+  const approveBlocked = !hasPhoto
+    ? "Add a photo before approving"
+    : textOverflow
+      ? "Card text does not fit — adjust the card text first"
+      : null;
 
   return (
-    <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="order-2 space-y-5 md:order-1">
-        <div className="md-card flex flex-wrap gap-2 p-3 sm:p-4">
-          <StepPill
-            label="1. Details"
-            state={detailsDone ? "done" : "current"}
-          />
-          <StepPill
-            label="2. Photo"
-            state={
-              !form.id
-                ? "todo"
-                : hasPhoto
-                  ? "done"
-                  : "current"
-            }
-          />
-          <StepPill
-            label="3. Approve"
-            state={
-              !hasPhoto
-                ? "todo"
-                : isApproved
-                  ? "done"
-                  : "current"
-            }
-          />
-          <StepPill
-            label="4. Print"
-            state={
-              form.status === "SUSPENDED"
-                ? "blocked"
-                : printable
-                  ? "done"
-                  : "todo"
-            }
-          />
-        </div>
-
-        <div className="md-card space-y-6 p-4 md:p-6">
-          <div>
-            <h2 className="md-title-medium">Staff details</h2>
-            <p className="md-body-medium mt-1 text-[var(--md-on-surface-variant)]">
-              Edits update the live card preview. Save when ready.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {(
-              [
-                ["idNumber", "ID number"],
-                ["lastName", "Surname (bold on card)"],
-                ["firstName", "First name"],
-                ["middleName", "Middle name"],
-                ["designation", "Designation"],
-                ["posting", "Posting / Job Title"],
-                ["department", "Department"],
-                ["dateIssued", "Date Issued"],
-                ["officeLine", "Office line"],
-                ["emergencyContactName", "Emergency contact"],
-                ["emergencyContactPhone", "Emergency phone"],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="block">
-                <span className="md-field-label">{label}</span>
-                <input
-                  className="nsc-field"
-                  value={(form[key] as string) ?? ""}
-                  onChange={(e) => set(key, e.target.value)}
-                />
-              </label>
+    <Box
+      sx={{
+        display: "grid",
+        gap: 3,
+        alignItems: "start",
+        gridTemplateColumns: {
+          xs: "minmax(0,1fr)",
+          md: "minmax(0,1fr) 340px",
+          xl: "minmax(0,1fr) 380px",
+        },
+      }}
+    >
+      <Stack spacing={2.5} sx={{ order: { xs: 2, md: 1 }, minWidth: 0 }}>
+        <Card sx={{ px: 2, py: 2.5 }}>
+          <Stepper activeStep={activeStep === -1 ? steps.length : activeStep} alternativeLabel>
+            {steps.map((st) => (
+              <Step key={st.label} completed={st.state === "done"}>
+                <StepLabel error={st.state === "blocked"}>
+                  {st.state === "blocked" ? "Suspended" : st.label}
+                </StepLabel>
+              </Step>
             ))}
-            {form.canMedical !== false && (
-              <>
-                <label className="block">
-                  <span className="md-field-label">Blood group (admin only)</span>
-                  <input
-                    className="nsc-field"
-                    value={form.bloodGroup ?? ""}
-                    onChange={(e) => set("bloodGroup", e.target.value)}
-                  />
-                </label>
-                <label className="block">
-                  <span className="md-field-label">Genotype (admin only)</span>
-                  <input
-                    className="nsc-field"
-                    value={form.genotype ?? ""}
-                    onChange={(e) => set("genotype", e.target.value)}
-                  />
-                </label>
-              </>
-            )}
-          </div>
+          </Stepper>
+        </Card>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="front-template" className="md-field-label">
-                Front template
-              </Label>
-              <Select
-                value={form.frontTemplate}
-                onValueChange={(value) => {
-                  if (value != null) set("frontTemplate", value as FrontTemplateId);
-                }}
-                items={FRONT_TEMPLATE_LABELS}
-              >
-                <SelectTrigger id="front-template" className="mt-1.5 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(FRONT_TEMPLATES) as FrontTemplateId[]).map((id) => (
-                    <SelectItem key={id} value={id}>
-                      {FRONT_TEMPLATE_LABELS[id]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="back-template" className="md-field-label">
-                Back template
-              </Label>
-              <Select
-                value={form.backTemplate}
-                onValueChange={(value) => {
-                  if (value != null) set("backTemplate", value as BackTemplateId);
-                }}
-                items={BACK_TEMPLATE_LABELS}
-              >
-                <SelectTrigger id="back-template" className="mt-1.5 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(BACK_TEMPLATES) as BackTemplateId[]).map((id) => (
-                    <SelectItem key={id} value={id}>
-                      {BACK_TEMPLATE_LABELS[id]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <TypeScaleControl
-            value={typeScale}
-            onChange={setTypeScale}
-            nameBasePt={nameLayoutAtDefault.fontSizePt}
-            nameOverflows={nameTooWide}
-          />
-
-          {mismatch ? (
-            <p className="md-body-medium rounded-[var(--md-shape-xs)] bg-[var(--md-warning-container)] px-3 py-2 text-[var(--md-on-warning-container)]">
-              Front and back colour families differ.
-            </p>
-          ) : null}
-
-          <div
-            ref={photoSectionRef}
-            className={`rounded-[var(--md-shape-md)] border border-dashed p-4 ${
-              form.id && !hasPhoto
-                ? "border-[var(--md-primary)] bg-[var(--md-primary-container)]/25"
-                : "border-[var(--md-outline-variant)] bg-[var(--md-surface-container-low)]"
-            }`}
+        <Card sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography variant="h6">Staff details</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Edits update the live card preview. Save when ready.
+          </Typography>
+          <Box
+            sx={{
+              mt: 2.5,
+              display: "grid",
+              gap: 2,
+              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+            }}
           >
-            {form.id ? (
-              <div className="space-y-2">
-                <p className="md-title-small">
-                  {hasPhoto ? "Staff photo" : "Add a staff photo"}
-                </p>
-                <p className="md-body-small">
-                  Use the camera or upload a file. Crop to fit the card.
-                </p>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="mt-2 block w-full text-sm text-[var(--md-on-surface-variant)] file:mr-3 file:h-10 file:rounded-full file:border file:border-[var(--md-outline)] file:bg-transparent file:px-4 file:text-sm file:font-medium file:text-[var(--md-primary)]"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) onFile(f);
-                  }}
-                />
-                {hasPhoto ? (
-                  <button
-                    type="button"
-                    onClick={editPositioning}
-                    className="md-label-large text-[var(--md-primary)] hover:underline"
-                  >
-                    Edit positioning
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <p className="md-body-medium text-[var(--md-on-surface-variant)]">
-                Save the record first, then you can capture a photo.
-              </p>
-            )}
-          </div>
+            {fields.map(([key, label]) => (
+              <TextField
+                key={key}
+                label={label}
+                type={key === "dateIssued" ? "date" : "text"}
+                value={(form[key] as string) ?? ""}
+                onChange={(e) => set(key, e.target.value)}
+                required={["idNumber", "lastName", "firstName", "designation"].includes(key)}
+                slotProps={key === "dateIssued" ? { inputLabel: { shrink: true } } : undefined}
+              />
+            ))}
+          </Box>
+        </Card>
 
-          {form.hasPendingEdits ? (
-            <p className="md-body-medium rounded-[var(--md-shape-xs)] bg-[var(--md-warning-container)] px-3 py-2 text-[var(--md-on-warning-container)]">
-              Changes awaiting approval — printing blocked until published.
-            </p>
+        <Card sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography variant="h6">Card design</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Pick a front; the back follows the same design.
+          </Typography>
+          <TemplatePicker
+            front={form.frontTemplate}
+            back={form.backTemplate}
+            onFront={(id) => set("frontTemplate", id)}
+            onBack={(id) => set("backTemplate", id)}
+          />
+          {crossBrand || mismatch ? (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              {crossBrand
+                ? "Front and back belong to different card designs."
+                : "Front and back colour families differ."}
+            </Alert>
           ) : null}
+          <Box sx={{ mt: 3 }}>
+            <TypeScaleControl value={textSettings} onChange={setTextSettings} layout={cardLayout} />
+          </Box>
+        </Card>
 
-          <div className="sticky bottom-3 z-20 -mx-1 space-y-3 rounded-[var(--md-shape-lg)] bg-[var(--md-surface-container-high)] p-3 shadow-[var(--md-elevation-2)] sm:static sm:mx-0 sm:bg-transparent sm:p-0 sm:shadow-none">
-            <div className="flex flex-wrap gap-2 sm:border-t sm:border-[var(--md-outline-variant)] sm:pt-5">
-              <Button type="button" onClick={save}>
-                Save
+        <Card
+          ref={photoSectionRef}
+          sx={{
+            p: { xs: 2, md: 3 },
+            ...(form.id && !hasPhoto
+              ? { borderColor: "primary.main", bgcolor: "var(--md-primary-container)" }
+              : {}),
+          }}
+        >
+          {form.id ? (
+            <>
+              <Typography variant="h6">{hasPhoto ? "Staff photo" : "Add a staff photo"}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {hasPhoto
+                  ? "Move and zoom the photo directly on the card, or re-crop and rotate it."
+                  : "Use the camera or upload a file, then crop it to fit the card."}
+              </Typography>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ mt: 2, flexWrap: "wrap" }}>
+                <Button component="label" variant={hasPhoto ? "outlined" : "contained"}>
+                  {hasPhoto ? "Replace photo" : "Take or upload photo"}
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) onFile(f);
+                    }}
+                  />
+                </Button>
+                {hasPhoto && form.photoOriginalKey ? (
+                  <Button
+                    variant="outlined"
+                    onClick={startAdjust}
+                    disabled={Boolean(adjust) || adjustLoading}
+                    startIcon={adjustLoading ? <CircularProgress size={14} color="inherit" /> : null}
+                  >
+                    {adjustLoading ? "Loading photo…" : "Adjust on card"}
+                  </Button>
+                ) : null}
+                {hasPhoto && form.photoOriginalKey ? (
+                  <Button variant="text" onClick={editPositioning} disabled={Boolean(adjust)}>
+                    Crop &amp; rotate
+                  </Button>
+                ) : null}
+              </Stack>
+            </>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Save the record first, then you can capture a photo.
+            </Typography>
+          )}
+        </Card>
+
+        {form.hasPendingEdits ? (
+          <Alert severity="warning">
+            Changes awaiting approval — printing blocked until published.
+          </Alert>
+        ) : null}
+
+        <Card
+          sx={{
+            p: 2,
+            position: { xs: "sticky", sm: "static" },
+            bottom: 12,
+            zIndex: 20,
+            boxShadow: { xs: "var(--md-elevation-2)", sm: "none" },
+          }}
+        >
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
+            <Button
+              variant="contained"
+              onClick={save}
+              disabled={saving}
+              startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
+            >
+              {saving ? "Saving…" : form.id ? "Save" : "Create record"}
+            </Button>
+            {form.id && form.canApprove !== false && !isApproved ? (
+              <Tooltip title={approveBlocked ?? ""}>
+                <span>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    onClick={approve}
+                    disabled={Boolean(approveBlocked)}
+                  >
+                    Approve &amp; publish
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
+            {form.id && form.canPrint !== false ? (
+              <Tooltip title={printable ? "" : "Approve with a photo before printing"}>
+                <span>
+                  <Button variant="outlined" onClick={printOne} disabled={!printable}>
+                    Download PDF
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
+            {form.id ? (
+              <Button variant="text" onClick={() => setMoreOpen((v) => !v)}>
+                {moreOpen ? "Hide more" : "More actions"}
               </Button>
-              {form.id && form.canApprove !== false && !isApproved ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={approve}
-                  disabled={!hasPhoto}
-                  title={!hasPhoto ? "Add a photo before approving" : undefined}
-                >
-                  Approve / publish
-                </Button>
-              ) : null}
-              {form.id && form.canPrint !== false ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={printOne}
-                  disabled={!printable}
-                  title={
-                    !printable
-                      ? "Approve with a photo before printing"
-                      : undefined
-                  }
-                >
-                  Download PDF
-                </Button>
-              ) : null}
-              {form.id ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setMoreOpen((v) => !v)}
-                >
-                  {moreOpen ? "Hide more" : "More actions"}
-                </Button>
-              ) : null}
-            </div>
+            ) : null}
+            <Box sx={{ flex: 1 }} />
+            {refreshing ? (
+              <Chip
+                className="nsc-anim-fade"
+                size="small"
+                icon={<CircularProgress size={12} />}
+                label="Refreshing…"
+                variant="outlined"
+              />
+            ) : dirty ? (
+              <Chip className="nsc-anim-fade" size="small" color="warning" label="Unsaved changes" />
+            ) : null}
+          </Stack>
 
-            {form.id && moreOpen ? (
-              <div className="flex flex-wrap gap-2 rounded-[var(--md-shape-md)] bg-[var(--md-surface-container-low)] p-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const qrUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/v/${form.qrToken}`;
-                    window.open(qrUrl, "_blank");
-                  }}
-                >
-                  Preview QR page
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => downloadQr("png")}
-                >
-                  QR PNG
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => downloadQr("svg")}
-                >
-                  QR SVG
-                </Button>
+          {form.id ? (
+            <Collapse in={moreOpen}>
+              <Stack
+                direction="row"
+                spacing={1}
+                useFlexGap
+                sx={{
+                  flexWrap: "wrap",
+                  mt: 2,
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: "var(--md-surface-container-low)",
+                }}
+              >
+                {hasQr ? (
+                  <>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() =>
+                        window.open(`/v/${form.qrToken}`, "_blank", "noopener,noreferrer")
+                      }
+                    >
+                      Preview QR page
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => downloadQr("png")}>
+                      QR PNG
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => downloadQr("svg")}>
+                      QR SVG
+                    </Button>
+                  </>
+                ) : null}
                 {form.canSuspend !== false ? (
                   form.status === "SUSPENDED" ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setReactivateOpen(true)}
-                    >
+                    <Button size="small" variant="outlined" onClick={() => setReactivateOpen(true)}>
                       Reactivate
                     </Button>
                   ) : (
                     <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
+                      size="small"
+                      variant="outlined"
+                      color="error"
                       onClick={() => setSuspendOpen(true)}
                     >
                       Suspend
                     </Button>
                   )
                 ) : null}
-                {form.canQr !== false ? (
+                {hasQr && form.canQr !== false ? (
                   <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
+                    size="small"
+                    variant="outlined"
+                    color="error"
                     onClick={() => setRegenOpen(true)}
                   >
-                    Regenerate QR
-                    {form.lastPrintedAt ? " (was printed)" : ""}
+                    Regenerate QR{form.lastPrintedAt ? " (was printed)" : ""}
                   </Button>
                 ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+              </Stack>
+            </Collapse>
+          ) : null}
+        </Card>
+      </Stack>
 
-      <aside className="order-1 space-y-3 md:sticky md:top-20 md:order-2">
-        <div className="md-card p-4">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <div>
-              <h2 className="md-title-medium">Live ID card</h2>
-              <p className="md-body-small">Updates as you edit</p>
-            </div>
-            {/* M3 segmented button */}
-            <div className="flex h-10 overflow-hidden rounded-full border border-[var(--md-outline)]">
-              <button
-                type="button"
-                onClick={() => setSide("front")}
-                aria-pressed={side === "front"}
-                className={`px-4 text-sm font-medium tracking-[0.007em] transition-colors ${
-                  side === "front"
-                    ? "bg-[var(--md-secondary-container)] text-[var(--md-on-secondary-container)]"
-                    : "text-[var(--md-on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
-                }`}
-              >
+      <Box
+        component="aside"
+        sx={{ order: { xs: 1, md: 2 }, position: { md: "sticky" }, top: { md: 80 } }}
+      >
+        <Card sx={{ p: 2 }} ref={previewCardRef}>
+          <Stack
+            direction="row"
+            sx={{ alignItems: "center", justifyContent: "space-between", mb: 2, gap: 1 }}
+          >
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
+                Live ID card
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {adjust
+                  ? "Drag the photo · scroll to zoom · Enter to save"
+                  : refreshing
+                    ? "Syncing with server…"
+                    : "Updates as you edit"}
+              </Typography>
+            </Box>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={side}
+              onChange={(_, v: "front" | "back" | null) => {
+                if (v) setSide(v);
+              }}
+              disabled={Boolean(adjust)}
+            >
+              <ToggleButton value="front" sx={{ px: 2 }}>
                 Front
-              </button>
-              <button
-                type="button"
-                onClick={() => setSide("back")}
-                aria-pressed={side === "back"}
-                className={`border-l border-[var(--md-outline)] px-4 text-sm font-medium tracking-[0.007em] transition-colors ${
-                  side === "back"
-                    ? "bg-[var(--md-secondary-container)] text-[var(--md-on-secondary-container)]"
-                    : "text-[var(--md-on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
-                }`}
-              >
+              </ToggleButton>
+              <ToggleButton value="back" sx={{ px: 2 }}>
                 Back
-              </button>
-            </div>
-          </div>
-          <div className="flex max-h-[70vh] justify-center overflow-auto rounded-[var(--md-shape-md)] bg-[var(--md-surface-container)] p-4">
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+          <Box
+            sx={{
+              position: "relative",
+              display: "flex",
+              justifyContent: "center",
+              maxHeight: "70vh",
+              overflow: "auto",
+              borderRadius: 3,
+              bgcolor: "var(--md-surface-container)",
+              p: 2,
+              transition: "box-shadow 200ms ease, opacity 200ms ease",
+              boxShadow: adjust ? "inset 0 0 0 2px var(--md-tertiary, #0e7490)" : "none",
+              opacity: refreshing && !adjust ? 0.85 : 1,
+            }}
+          >
             <CardPreview
               side={side}
               frontTemplate={form.frontTemplate}
@@ -829,22 +985,100 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
               idNumber={form.idNumber || "0000000000"}
               qrToken={form.qrToken || "previewtoken0001"}
               photoUrl={photoUrl}
-              typeScale={typeScale}
+              text={textSettings}
               scale={1.9}
+              photoAdjust={
+                adjust
+                  ? {
+                      ...adjust,
+                      onChange: (crop) => setAdjust((a) => (a ? { ...a, crop } : a)),
+                    }
+                  : undefined
+              }
             />
-          </div>
-        </div>
-      </aside>
+          </Box>
+          {adjust && adjustBounds ? (
+            <Box
+              className="nsc-anim-slide-up"
+              sx={{
+                mt: 1.5,
+                p: 1.5,
+                borderRadius: 3,
+                bgcolor: "var(--md-surface-container-high)",
+                boxShadow: "var(--md-elevation-2)",
+                // Stays in reach while the card scrolls on small screens.
+                position: { xs: "sticky", md: "static" },
+                bottom: 12,
+                zIndex: 5,
+              }}
+            >
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+                <Typography variant="caption" sx={{ fontWeight: 500 }} id="adjust-zoom">
+                  Zoom
+                </Typography>
+                <Slider
+                  aria-labelledby="adjust-zoom"
+                  size="small"
+                  min={1}
+                  max={maxZoom(adjustBounds)}
+                  step={0.01}
+                  value={cropZoom(adjust.crop, adjustBounds)}
+                  onChange={(_, v) =>
+                    setAdjust((a) =>
+                      a ? { ...a, crop: zoomCrop(a.crop, v as number, adjustBounds) } : a,
+                    )
+                  }
+                />
+                <Chip
+                  size="small"
+                  color={cropDpi(adjust.crop) < PHOTO_DPI_FLOOR * 1.1 ? "warning" : "default"}
+                  label={`${Math.round(cropDpi(adjust.crop))} dpi`}
+                  sx={{ flexShrink: 0 }}
+                />
+              </Stack>
+              <Stack direction="row" spacing={1} sx={{ mt: 1, justifyContent: "flex-end" }}>
+                <Button
+                  variant="text"
+                  size="small"
+                  disabled={adjustSaving}
+                  onClick={() =>
+                    setAdjust((a) =>
+                      a ? { ...a, crop: defaultCrop(adjustBounds, a.crop.rotation) } : a,
+                    )
+                  }
+                >
+                  Reset
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={adjustSaving}
+                  onClick={() => setAdjust(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={saveAdjust}
+                  disabled={adjustSaving}
+                  startIcon={adjustSaving ? <CircularProgress size={14} color="inherit" /> : null}
+                >
+                  {adjustSaving ? "Saving…" : "Save position"}
+                </Button>
+              </Stack>
+            </Box>
+          ) : null}
+        </Card>
+      </Box>
 
       {cropSrc ? (
         <PhotoCropper
           imageSrc={cropSrc}
           frontTemplate={form.frontTemplate}
-          initialCrop={parsedCrop}
-          onCancel={() => {
-            setCropSrc(null);
-            setRawFile(null);
-          }}
+          // Saved framing only applies to the same image it was cut from.
+          initialCrop={cropMode === "recrop" ? (parsedCrop as SavedCrop | undefined) : undefined}
+          onCancel={closeCropper}
           onSave={saveCrop}
         />
       ) : null}
@@ -876,6 +1110,8 @@ export function StaffEditor({ initial }: { initial?: StaffData }) {
         requireText="REGENERATE"
         onConfirm={regenerateQr}
       />
-    </div>
+
+      <RefreshIndicator show={refreshing} />
+    </Box>
   );
 }

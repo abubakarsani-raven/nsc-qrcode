@@ -6,10 +6,24 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
+/** Only same-site paths — never bounce a fresh login to another origin. */
+function safeCallback(raw: string | null) {
+  if (!raw) return "/staff";
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin || url.pathname.startsWith("/login")) {
+      return "/staff";
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/staff";
+  }
+}
+
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [email, setEmail] = useState("admin@shipperscouncil.gov.ng");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,18 +32,24 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (res?.error) {
-      setError("Invalid email or password");
-      return;
+    try {
+      const res = await signIn("credentials", {
+        email: email.trim(),
+        password,
+        redirect: false,
+      });
+      if (!res || res.error) {
+        setError("Invalid email or password");
+        setLoading(false);
+        return;
+      }
+      // Keep the button in its "Signing in…" state through the navigation.
+      router.replace(safeCallback(params.get("callbackUrl")));
+      router.refresh();
+    } catch {
+      setError("Could not reach the server. Check your connection and try again.");
+      setLoading(false);
     }
-    router.push(params.get("callbackUrl") || "/staff");
-    router.refresh();
   }
 
   return (
@@ -43,6 +63,7 @@ export function LoginForm() {
           type="email"
           required
           autoComplete="username"
+          autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="nsc-field"

@@ -4,6 +4,7 @@ import {
   PHOTO_MASTER,
   PHOTO_SLOT_INCHES,
 } from "@/lib/id-card/slots.generated";
+import { cropOverhang } from "@/lib/photo/card-crop";
 import { getPhoto, putPhoto } from "@/lib/photo/storage";
 
 export type CropParams = {
@@ -40,14 +41,40 @@ export async function saveOriginal(
   return key;
 }
 
-/** Shared crop/rotate stage — the source is always bytes, never a path. */
-function cropped(source: Buffer, crop: CropParams, sharpen: boolean) {
-  const pipeline = sharp(source).rotate(crop.rotation ?? 0).extract({
-    left: Math.max(0, Math.round(crop.x)),
-    top: Math.max(0, Math.round(crop.y)),
-    width: Math.max(1, Math.round(crop.width)),
-    height: Math.max(1, Math.round(crop.height)),
-  });
+/**
+ * Shared crop/rotate stage — the source is always bytes, never a path.
+ * Where the crop runs past the photo (see CROP_OVERHANG) the edge pixels are
+ * repeated outward, which the on-card preview draws the same way.
+ */
+async function cropped(source: Buffer, crop: CropParams, sharpen: boolean) {
+  const width = Math.max(1, Math.round(crop.width));
+  const height = Math.max(1, Math.round(crop.height));
+  const over = cropOverhang({ width, height, rotation: crop.rotation });
+  const { data, info } = await sharp(source)
+    .rotate(crop.rotation ?? 0)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const raw = { width: info.width, height: info.height, channels: info.channels };
+
+  const clamp = (start: number, size: number, extent: number, overhang: number) =>
+    Math.min(extent - size + overhang, Math.max(-overhang, Math.round(start)));
+  const left = clamp(crop.x, width, info.width, over.w);
+  const top = clamp(crop.y, height, info.height, over.h);
+  const pad = {
+    left: Math.max(0, -left),
+    top: Math.max(0, -top),
+    right: Math.max(0, left + width - info.width),
+    bottom: Math.max(0, top + height - info.height),
+  };
+
+  let base = sharp(data, { raw });
+  if (pad.left || pad.top || pad.right || pad.bottom) {
+    const padded = await base.extend({ ...pad, extendWith: "copy" }).raw().toBuffer();
+    base = sharp(padded, {
+      raw: { ...raw, width: raw.width + pad.left + pad.right, height: raw.height + pad.top + pad.bottom },
+    });
+  }
+  const pipeline = base.extract({ left: left + pad.left, top: top + pad.top, width, height });
   return sharpen ? pipeline.sharpen() : pipeline;
 }
 
@@ -58,7 +85,7 @@ export async function writePreviewFromCrop(
   sharpen = false,
 ) {
   const source = await getPhoto(staffId, originalKey);
-  const preview = await cropped(source, crop, sharpen)
+  const preview = await (await cropped(source, crop, sharpen))
     .resize(PHOTO_MASTER.width, PHOTO_MASTER.height, {
       fit: "fill",
       kernel: sharp.kernel.lanczos3,
@@ -82,7 +109,7 @@ export async function printCutBuffer(
   const targetW = Math.round(PHOTO_SLOT_INCHES.width * 600);
   const targetH = Math.round(PHOTO_SLOT_INCHES.height * 600);
 
-  return cropped(source, crop, sharpen)
+  return (await cropped(source, crop, sharpen))
     .resize(targetW, targetH, { fit: "fill", kernel: sharp.kernel.lanczos3 })
     .jpeg({ quality: 95 })
     .toBuffer();
@@ -146,45 +173,4 @@ export async function maskPhotoToFrame(
     .composite([{ input: maskSvg, blend: "dest-in" }])
     .png()
     .toBuffer();
-}
-
-/** Estimate final file size in KB based on DPI and crop dimensions */
-export function estimateFileSize(dpi: number, width: number, height: number): number {
-  // Rough estimate: smaller DPI = smaller file
-  // Quality 92 JPEG ≈ 0.04-0.06 bytes per pixel
-  const megapixels = (width / 72) * (height / 72) * (dpi / 150);
-  const estimatedBytes = megapixels * 1000000 * 0.05; // ~50 bytes per megapixel at quality 92
-  return Math.round(estimatedBytes / 1024); // Convert to KB
-}
-
-/** Read basic image metadata from buffer */
-export async function readImageMetadata(
-  buffer: Buffer
-): Promise<{ width: number; height: number; colorSpace?: string }> {
-  // Simple metadata extraction - look for JPEG markers
-  try {
-    // Find SOF (Start of Frame) marker in JPEG
-    let offset = 2; // Skip SOI marker (FFD8)
-    while (offset < buffer.length) {
-      if (buffer[offset] === 0xff) {
-        const marker = buffer[offset + 1];
-        // SOF0-SOF15 (except SOF4, SOF8, SOF12)
-        if ((marker >= 0xc0 && marker <= 0xcf) && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-          const height = buffer.readUInt16BE(offset + 5);
-          const width = buffer.readUInt16BE(offset + 7);
-          // Byte at offset+9 tells us components (1=gray, 3=RGB, 4=CMYK)
-          const components = buffer[offset + 9];
-          const colorSpace = components === 1 ? "Grayscale" : components === 3 ? "RGB" : components === 4 ? "CMYK" : "Unknown";
-          return { width, height, colorSpace };
-        }
-        const segmentLength = buffer.readUInt16BE(offset + 2);
-        offset += 2 + segmentLength;
-      } else {
-        offset++;
-      }
-    }
-  } catch {
-    // Fall through to default
-  }
-  return { width: 0, height: 0, colorSpace: "Unknown" };
 }

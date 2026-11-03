@@ -14,14 +14,25 @@
     "db:setup": "prisma generate && tsx scripts/bootstrap-db.ts",
     "db:bootstrap": "prisma generate && tsx scripts/bootstrap-db.ts",
     "extract-templates": "python3 scripts/extract-templates.py",
+    "extract-npera": "python3 scripts/extract-npera.py",
+    "gen:font-metrics": "node --import tsx scripts/gen-font-metrics.ts",
+    "gen:template-thumbs": "node --import tsx scripts/gen-template-thumbs.ts",
     "test:fidelity": "tsx scripts/fidelity-test.ts",
-    "test:qr-budget": "tsx scripts/qr-budget-test.ts"
+    "test:qr-budget": "tsx scripts/qr-budget-test.ts",
+    "test:card-proof": "node -r ./scripts/mock-server-only.cjs --import tsx scripts/card-proof.ts",
+    "test:card-crop": "node --import tsx scripts/check-card-crop.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@emotion/cache": "^11.14.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.5.0",
+    "@mui/material-nextjs": "^9.5.0",
+    "@mui/x-data-grid": "^9.17.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "@prisma/adapter-better-sqlite3": "^7.9.1",
     "@prisma/adapter-pg": "^7.9.1",

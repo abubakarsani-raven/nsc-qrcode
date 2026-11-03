@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
+import TextField from "@mui/material/TextField";
+import { toast } from "sonner";
+import { networkMessage } from "@/lib/client-api";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -39,6 +40,12 @@ export function ConfirmDialog({
   const [busy, setBusy] = useState(false);
   const canConfirm = !requireText || typed === requireText;
 
+  function close() {
+    if (busy) return;
+    setTyped("");
+    onOpenChange(false);
+  }
+
   async function handleConfirm() {
     if (!canConfirm) return;
     setBusy(true);
@@ -46,62 +53,58 @@ export function ConfirmDialog({
       await onConfirm();
       setTyped("");
       onOpenChange(false);
+    } catch (err) {
+      // Keep the dialog open so the user can retry or cancel.
+      toast.error(networkMessage(err, "Something went wrong"));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) setTyped("");
-        onOpenChange(next);
-      }}
-    >
-      <DialogContent className="sm:max-w-md" showCloseButton={!busy}>
-        <DialogHeader>
-          <DialogTitle className="tracking-tight">{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+    <Dialog open={open} onClose={close} maxWidth="xs" fullWidth>
+      <DialogTitle>{title}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>{description}</DialogContentText>
         {requireText ? (
-          <div className="space-y-1.5">
-            <label htmlFor="confirm-type" className="md-field-label">
-              Type{" "}
-              <span className="font-mono text-[var(--md-on-surface)]">
-                {requireText}
-              </span>{" "}
-              to confirm
-            </label>
-            <input
-              id="confirm-type"
-              className="nsc-field"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              autoComplete="off"
-              disabled={busy}
-            />
-          </div>
-        ) : null}
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="ghost"
+          <TextField
+            sx={{ mt: 2.5 }}
+            label={
+              <>
+                Type{" "}
+                <Box component="span" sx={{ fontFamily: "monospace" }}>
+                  {requireText}
+                </Box>{" "}
+                to confirm
+              </>
+            }
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoComplete="off"
             disabled={busy}
-            onClick={() => onOpenChange(false)}
-          >
-            {cancelLabel}
-          </Button>
-          <Button
-            type="button"
-            variant={destructive ? "destructive" : "default"}
-            disabled={!canConfirm || busy}
-            onClick={handleConfirm}
-          >
-            {busy ? "Working…" : confirmLabel}
-          </Button>
-        </DialogFooter>
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canConfirm && !busy) {
+                e.preventDefault();
+                void handleConfirm();
+              }
+            }}
+          />
+        ) : null}
       </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <Button variant="text" disabled={busy} onClick={close}>
+          {cancelLabel}
+        </Button>
+        <Button
+          variant="contained"
+          color={destructive ? "error" : "primary"}
+          disabled={!canConfirm || busy}
+          onClick={handleConfirm}
+        >
+          {busy ? "Working…" : confirmLabel}
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

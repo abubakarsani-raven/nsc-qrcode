@@ -5,15 +5,14 @@ import { can } from "@/lib/auth";
 import { publicVerifyUrl, assertUrlBudget } from "@/lib/qr";
 import { roundedQrSvg } from "@/lib/qr-render";
 import { roundedQrPngBuffer } from "@/lib/qr-render-png";
-import type { Role } from "@/generated/prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(req: NextRequest, ctx: Ctx) {
   const gate = await requireSession();
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
 
-  const role = gate.session!.user.role as Role;
+  const role = gate.session.user.role;
   if (!can(role, "createEdit") && !can(role, "print")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

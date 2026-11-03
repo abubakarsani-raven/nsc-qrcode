@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import { Providers } from "@/components/providers";
+import { MuiProvider } from "@/components/mui-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +17,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen antialiased">
-        <Providers>{children}</Providers>
+        <AppRouterCacheProvider options={{ enableCssLayer: true }}>
+          <MuiProvider>
+            <Providers>{children}</Providers>
+          </MuiProvider>
+        </AppRouterCacheProvider>
       </body>
     </html>
   );

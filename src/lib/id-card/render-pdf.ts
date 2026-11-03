@@ -1,33 +1,23 @@
 import {
   PDFDocument,
   rgb,
-  degrees,
   setCharacterSpacing,
   type PDFPage,
-  type PDFFont,
-  type RGB,
 } from "pdf-lib";
 import {
+  BACK_TEMPLATES,
   FRONT_TEMPLATES,
-  PAGE,
   type BackTemplateId,
   type FrontTemplateId,
-  type Rect,
 } from "@/lib/id-card/slots.generated";
-import { layoutName } from "@/lib/id-card/name-layout";
-import { embedCardFonts } from "@/lib/id-card/fonts";
-import {
-  CARD_THEMES,
-  ID_TRACKING_EM,
-  NAME_TOP_NUDGE_PT,
-  TITLE_RULE,
-  type CardColorMatch,
-} from "@/lib/id-card/theme";
+import { layoutFront } from "@/lib/id-card/card-layout";
+import { cardFontEmbedder } from "@/lib/id-card/fonts";
 import {
   renderBackCardPng,
   renderFrontCardPng,
 } from "@/lib/id-card/render-preview-image";
-import { BASE_PT, parseTypeScale } from "@/lib/id-card/type-scale";
+import { parseTextSettings } from "@/lib/id-card/type-scale";
+import { code128Rects } from "@/lib/barcode/code128";
 
 export type StaffCardInput = {
   id: string;
@@ -42,7 +32,7 @@ export type StaffCardInput = {
   photoOriginalKey?: string | null;
   photoCrop?: string | null;
   photoPreviewKey?: string | null;
-  /** JSON type-scale override; defaults when absent. */
+  /** JSON type settings override; defaults when absent. */
   cardTypeScale?: string | null;
 };
 
@@ -55,197 +45,94 @@ function hexRgb(hex: string) {
   );
 }
 
-function themeColors(match: CardColorMatch) {
-  const t = CARD_THEMES[match];
-  return {
-    name: hexRgb(t.name),
-    designation: hexRgb(t.designation),
-    idNo: hexRgb(t.idNo),
-    rule: hexRgb(t.rule),
-  };
-}
-
-/** Sample text bboxes are loose; treat rect.y as the CSS top of the glyph box. */
-function baselineFromTop(rect: Rect, size: number, pageHeight = PAGE.height) {
-  return pageHeight - rect.y - size * 0.82;
-}
-
-/** Sample tracking on the ID line, tightened only if the number would overflow. */
-function idCharacterSpacing(
-  text: string,
-  font: PDFFont,
-  size: number,
-  maxWidth: number,
-) {
-  if (text.length < 2) return 0;
-  const natural = font.widthOfTextAtSize(text, size);
-  const spacing = ID_TRACKING_EM * size;
-  const gaps = text.length - 1;
-  if (natural + spacing * gaps <= maxWidth) return spacing;
-  return Math.max(0, (maxWidth - natural) / gaps);
-}
-
-function drawMixedNameLine(
-  page: PDFPage,
-  surname: string,
-  givenPart: string,
-  rect: Rect,
-  bold: PDFFont,
-  regular: PDFFont,
-  size: number,
-  color: RGB,
-  axisX?: number,
-) {
-  const gap = givenPart ? bold.widthOfTextAtSize(" ", size) : 0;
-  const tw =
-    bold.widthOfTextAtSize(surname, size) +
-    gap +
-    (givenPart ? regular.widthOfTextAtSize(givenPart, size) : 0);
-  const cx = axisX ?? rect.x + rect.w / 2;
-  let x = cx - tw / 2;
-  const y = baselineFromTop(rect, size);
-  page.drawText(surname, { x, y, size, font: bold, color });
-  x += bold.widthOfTextAtSize(surname, size);
-  if (givenPart) {
-    page.drawText(` ${givenPart}`, { x, y, size, font: regular, color });
-  }
-}
-
-function drawCenteredText(
-  page: PDFPage,
-  text: string,
-  rect: Rect,
-  font: PDFFont,
-  size: number,
-  color: RGB,
-  axisX?: number,
-  opts?: { characterSpacing?: number },
-) {
-  const spacing = opts?.characterSpacing ?? 0;
-  const natural = font.widthOfTextAtSize(text, size);
-  const tw = natural + spacing * Math.max(0, text.length - 1);
-  const cx = axisX ?? rect.x + rect.w / 2;
-  const x = cx - tw / 2;
-  const y = baselineFromTop(rect, size);
-  // `drawText` has no tracking option — set Tc on the page state around it.
-  if (spacing) page.pushOperators(setCharacterSpacing(spacing));
-  page.drawText(text, { x, y, size, font, color });
-  if (spacing) page.pushOperators(setCharacterSpacing(0));
-}
-
-/** Stamp name / designation / ID with embedded Poppins (works on Vercel). */
-function drawFrontText(
+/** Stamp name / designation / ID / rule from the shared layout as vector text. */
+async function drawFrontText(
   page: PDFPage,
   staff: StaffCardInput,
-  regular: PDFFont,
-  bold: PDFFont,
+  fontFor: ReturnType<typeof cardFontEmbedder>,
 ) {
-  const front = FRONT_TEMPLATES[staff.frontTemplate];
-  const colors = themeColors(front.colorMatch);
-  const given = [staff.firstName, staff.middleName].filter(Boolean).join(" ");
-  const type = parseTypeScale(staff.cardTypeScale);
-  const name = layoutName(staff.lastName, given, staff.frontTemplate, type.name);
-  const designationPt = BASE_PT.designation * type.designation;
-  const idPt = BASE_PT.idNo * type.idNo;
-  const axis = front.contentAxisX;
+  const layout = layoutFront({
+    frontTemplate: staff.frontTemplate,
+    firstName: staff.firstName,
+    middleName: staff.middleName,
+    lastName: staff.lastName,
+    designation: staff.designation,
+    idNumber: staff.idNumber,
+    text: parseTextSettings(staff.cardTypeScale),
+  });
+  const pageHeight = layout.template.page.height;
 
-  const nameLine = { ...front.nameLine1, y: front.nameLine1.y + NAME_TOP_NUDGE_PT };
-  drawMixedNameLine(
-    page,
-    name.surname,
-    name.line1Given,
-    nameLine,
-    bold,
-    regular,
-    name.fontSizePt,
-    colors.name,
-    axis,
-  );
-  if (name.line2) {
-    const line2Rect = {
-      ...front.nameLine2,
-      y: front.nameLine1.y + NAME_TOP_NUDGE_PT + name.leadingPt,
-      h: name.fontSizePt + 2,
-    };
-    drawCenteredText(
-      page,
-      name.line2,
-      line2Rect,
-      regular,
-      name.fontSizePt,
-      colors.name,
-      axis,
-    );
+  for (const run of layout.runs) {
+    const font = await fontFor(run.font);
+    // `drawText` has no tracking option — set Tc on the page state around it.
+    if (run.trackingPt) page.pushOperators(setCharacterSpacing(run.trackingPt));
+    page.drawText(run.text, {
+      x: run.x,
+      y: pageHeight - run.baseline,
+      size: run.sizePt,
+      font,
+      color: hexRgb(run.color),
+    });
+    if (run.trackingPt) page.pushOperators(setCharacterSpacing(0));
   }
 
-  const designation = staff.designation.toUpperCase();
-  drawCenteredText(
-    page,
-    designation,
-    front.designation,
-    regular,
-    designationPt,
-    colors.designation,
-    axis,
-  );
-
-  // Single rule under designation
-  const ruleYTop =
-    PAGE.height -
-    (front.designation.y + front.designation.h + TITLE_RULE.offsetPt);
+  const { rule } = layout;
   page.drawRectangle({
-    x: axis - TITLE_RULE.widthPt / 2,
-    y: ruleYTop - TITLE_RULE.thicknessPt,
-    width: TITLE_RULE.widthPt,
-    height: TITLE_RULE.thicknessPt,
-    color: colors.rule,
+    x: rule.x,
+    y: pageHeight - rule.y - rule.h,
+    width: rule.w,
+    height: rule.h,
+    color: hexRgb(rule.color),
     borderWidth: 0,
   });
+}
 
-  const idLabel = `ID NO. ${staff.idNumber}`;
-  drawCenteredText(
-    page,
-    idLabel,
-    front.idNo,
-    bold,
-    idPt,
-    colors.idNo,
-    axis,
-    {
-      characterSpacing: idCharacterSpacing(idLabel, bold, idPt, front.idNo.w),
-    },
-  );
+function drawBackBarcode(page: PDFPage, staff: StaffCardInput) {
+  const back = BACK_TEMPLATES[staff.backTemplate];
+  if (!back.barcode || !staff.idNumber.trim()) return;
+  const color = hexRgb(back.barcode.color);
+  for (const bar of code128Rects(staff.idNumber.trim(), back.barcode.rect, back.barcode)) {
+    page.drawRectangle({
+      x: bar.x,
+      y: back.page.height - bar.y - bar.h,
+      width: bar.w,
+      height: bar.h,
+      color,
+      borderWidth: 0,
+    });
+  }
 }
 
 /**
- * Print PDF = preview artwork (PNG template + photo + QR) + vector Poppins text.
- * Text is not rasterized through sharp: Vercel’s librsvg often drops custom
- * fonts and replaces glyphs with □ squares.
+ * Print PDF = preview artwork (PNG template + photo + QR) + vector text and
+ * barcode. Text is not rasterized through sharp: Vercel’s librsvg often drops
+ * custom fonts and replaces glyphs with □ squares.
  */
 export async function renderStaffCardPdf(staff: StaffCardInput) {
   const out = await PDFDocument.create();
-  const { regular, bold } = await embedCardFonts(out);
+  const fontFor = cardFontEmbedder(out);
+  const front = FRONT_TEMPLATES[staff.frontTemplate];
+  const back = BACK_TEMPLATES[staff.backTemplate];
 
-  const frontPng = await renderFrontCardPng(staff);
-  const frontImg = await out.embedPng(frontPng);
-  const frontPage = out.addPage([PAGE.width, PAGE.height]);
+  const frontImg = await out.embedPng(await renderFrontCardPng(staff));
+  const frontPage = out.addPage([front.page.width, front.page.height]);
   frontPage.drawImage(frontImg, {
     x: 0,
     y: 0,
-    width: PAGE.width,
-    height: PAGE.height,
+    width: front.page.width,
+    height: front.page.height,
   });
-  drawFrontText(frontPage, staff, regular, bold);
+  await drawFrontText(frontPage, staff, fontFor);
 
-  const backPng = await renderBackCardPng(staff);
-  const backImg = await out.embedPng(backPng);
-  const backPage = out.addPage([PAGE.width, PAGE.height]);
+  const backImg = await out.embedPng(await renderBackCardPng(staff));
+  const backPage = out.addPage([back.page.width, back.page.height]);
   backPage.drawImage(backImg, {
     x: 0,
     y: 0,
-    width: PAGE.width,
-    height: PAGE.height,
+    width: back.page.width,
+    height: back.page.height,
   });
+  drawBackBarcode(backPage, staff);
 
   return out.save();
 }
@@ -261,7 +148,38 @@ export async function renderBatchPdf(staffList: StaffCardInput[]) {
   return out.save();
 }
 
-/** Simple n-up imposition on A4 with gutters and crop marks */
+function drawCropMarks(sheet: PDFPage, x: number, y: number, w: number, h: number) {
+  const mark = 6;
+  const gap = 2;
+  const black = rgb(0, 0, 0);
+  const corners: Array<[number, number, number, number]> = [
+    [x, y, -1, -1],
+    [x + w, y, 1, -1],
+    [x, y + h, -1, 1],
+    [x + w, y + h, 1, 1],
+  ];
+  for (const [cx, cy, dx, dy] of corners) {
+    sheet.drawLine({
+      start: { x: cx + dx * gap, y: cy },
+      end: { x: cx + dx * (gap + mark), y: cy },
+      thickness: 0.3,
+      color: black,
+    });
+    sheet.drawLine({
+      start: { x: cx, y: cy + dy * gap },
+      end: { x: cx, y: cy + dy * (gap + mark) },
+      thickness: 0.3,
+      color: black,
+    });
+  }
+}
+
+/**
+ * N-up imposition with gutters and crop marks. The grid cell fits the largest
+ * card in the batch (CR80 when any NPERA card is present); each card sits
+ * centred in its cell at its own size, and backs mirror the column order so
+ * duplex sheets line up.
+ */
 export async function renderImposedSheet(
   staffList: StaffCardInput[],
   paper: "A4" | "A3" = "A4",
@@ -269,56 +187,39 @@ export async function renderImposedSheet(
   const paperSize =
     paper === "A3" ? { w: 841.89, h: 1190.55 } : { w: 595.28, h: 841.89 };
   const gutter = 8.5; // ~3 mm
-  const cardW = PAGE.width;
-  const cardH = PAGE.height;
-  const cols = Math.max(1, Math.floor((paperSize.w - gutter) / (cardW + gutter)));
-  const rows = Math.max(1, Math.floor((paperSize.h - gutter) / (cardH + gutter)));
+  const cellW = Math.max(
+    ...staffList.map((s) => FRONT_TEMPLATES[s.frontTemplate].page.width),
+  );
+  const cellH = Math.max(
+    ...staffList.map((s) => FRONT_TEMPLATES[s.frontTemplate].page.height),
+  );
+  const cols = Math.max(1, Math.floor((paperSize.w - gutter) / (cellW + gutter)));
+  const rows = Math.max(1, Math.floor((paperSize.h - gutter) / (cellH + gutter)));
   const perSheet = cols * rows;
 
   const out = await PDFDocument.create();
   let index = 0;
   while (index < staffList.length) {
-    const sheet = out.addPage([paperSize.w, paperSize.h]);
     const chunk = staffList.slice(index, index + perSheet);
-    for (let i = 0; i < chunk.length; i++) {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = gutter + col * (cardW + gutter);
-      const y = paperSize.h - gutter - (row + 1) * cardH - row * gutter;
-      const cardBytes = await renderStaffCardPdf(chunk[i]);
-      const cardDoc = await PDFDocument.load(cardBytes);
-      const [embedded] = await out.embedPages([cardDoc.getPage(0)]);
-      sheet.drawPage(embedded, { x, y, width: cardW, height: cardH });
-      const mark = 6;
-      sheet.drawLine({
-        start: { x: x - 2, y },
-        end: { x: x - 2 - mark, y },
-        thickness: 0.3,
-        color: rgb(0, 0, 0),
-      });
-      sheet.drawLine({
-        start: { x, y: y - 2 },
-        end: { x, y: y - 2 - mark },
-        thickness: 0.3,
-        color: rgb(0, 0, 0),
-      });
-    }
-    const backSheet = out.addPage([paperSize.w, paperSize.h]);
-    for (let i = 0; i < chunk.length; i++) {
-      const col = cols - 1 - (i % cols);
-      const row = Math.floor(i / cols);
-      const x = gutter + col * (cardW + gutter);
-      const y = paperSize.h - gutter - (row + 1) * cardH - row * gutter;
-      const cardBytes = await renderStaffCardPdf(chunk[i]);
-      const cardDoc = await PDFDocument.load(cardBytes);
-      const [embedded] = await out.embedPages([cardDoc.getPage(1)]);
-      backSheet.drawPage(embedded, {
-        x,
-        y,
-        width: cardW,
-        height: cardH,
-        rotate: degrees(0),
-      });
+    const cards = await Promise.all(
+      chunk.map(async (staff) => PDFDocument.load(await renderStaffCardPdf(staff))),
+    );
+
+    for (const side of [0, 1] as const) {
+      const sheet = out.addPage([paperSize.w, paperSize.h]);
+      for (let i = 0; i < chunk.length; i++) {
+        const card = cards[i].getPage(side);
+        const { width: w, height: h } = card.getSize();
+        const col = side === 0 ? i % cols : cols - 1 - (i % cols);
+        const row = Math.floor(i / cols);
+        const cellX = gutter + col * (cellW + gutter);
+        const cellY = paperSize.h - gutter - (row + 1) * cellH - row * gutter;
+        const x = cellX + (cellW - w) / 2;
+        const y = cellY + (cellH - h) / 2;
+        const [embedded] = await out.embedPages([card]);
+        sheet.drawPage(embedded, { x, y, width: w, height: h });
+        drawCropMarks(sheet, x, y, w, h);
+      }
     }
     index += perSheet;
   }

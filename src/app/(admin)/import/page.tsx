@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { parseCsvRows } from "@/lib/csv";
+import { errorMessage, networkMessage, readJson } from "@/lib/client-api";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -62,13 +64,13 @@ export default function ImportPage() {
     setResult(null);
     if (f.name.endsWith(".csv")) {
       const text = await f.text();
-      const first = text.split(/\r?\n/)[0] ?? "";
-      const cols = first.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+      const cols = (parseCsvRows(text)[0] ?? []).map((c) => c.trim()).filter(Boolean);
       setHeaders(cols);
       const auto: Record<string, string> = {};
       for (const field of FIELDS) {
+        const norm = (v: string) => v.toLowerCase().replace(/[^a-z]/g, "");
         const hit = cols.find(
-          (c) => c.toLowerCase().replace(/\s+/g, "") === field.toLowerCase(),
+          (c) => norm(c) === norm(field) || norm(c) === norm(FIELD_LABELS[field]),
         );
         if (hit) auto[field] = hit;
       }
@@ -94,10 +96,10 @@ export default function ImportPage() {
       fd.append("mapping", JSON.stringify(mapping));
       fd.append("dryRun", dryRun ? "1" : "0");
       const res = await fetch("/api/staff/import", { method: "POST", body: fd });
-      const data = (await res.json()) as ImportResult;
+      const data = await readJson<ImportResult>(res);
       setResult(data);
       if (!res.ok) {
-        toast.error(data.error || "Import blocked — fix errors and try again");
+        toast.error(errorMessage(res, data, "Import blocked — fix errors and try again"));
         return;
       }
       if (dryRun) {
@@ -107,6 +109,8 @@ export default function ImportPage() {
       } else {
         toast.success(`Imported ${data.createdCount ?? 0} staff records`);
       }
+    } catch (error) {
+      toast.error(networkMessage(error, "Import failed"));
     } finally {
       setBusy(false);
     }

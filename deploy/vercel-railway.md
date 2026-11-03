@@ -48,7 +48,9 @@ npm run dev
 
 ## Notes
 
-- Seed is **upsert**-based; redeploys will not wipe staff you add later (except the seeded sample’s fixed fields are refreshed).
+- Seed is idempotent; redeploys will not wipe staff you add later.
+- The seed only **creates** the admin — it never overwrites an existing password. Set `ADMIN_PASSWORD_RESET=1` for a single deploy to force `ADMIN_PASSWORD` onto the admin account.
+- Demo accounts (entry/approver/printer) and the sample staff record are seeded outside production only (`SEED_DEMO=1` to opt in).
 - Set `SKIP_DB_SEED=1` to skip the build-time seed (schema push still runs unless you skip the whole bootstrap).
 - Photos on Vercel `/tmp` are not durable — plan object storage for production photos.
 - QR public URL length is capped (~62 bytes); prefer a short custom domain for `APP_URL`.

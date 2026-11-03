@@ -1,121 +1,162 @@
 "use client";
 
 import { MinusIcon, PlusIcon } from "lucide-react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import Divider from "@mui/material/Divider";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import IconButton from "@mui/material/IconButton";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import type { FrontLayout } from "@/lib/id-card/card-layout";
 import {
-  BASE_PT,
+  DEFAULT_TEXT_SETTINGS,
   TYPE_SCALE_MAX,
   TYPE_SCALE_MIN,
   TYPE_SCALE_STEP,
   TYPE_SLOT_LABELS,
   clampScale,
+  isDefaultTextSettings,
   scaledPt,
-  type CardTypeScale,
+  type CardTextSettings,
   type CardTypeSlot,
 } from "@/lib/id-card/type-scale";
+import { monoFont } from "@/theme/mui-theme";
 
 type Props = {
-  value: CardTypeScale;
-  onChange: (next: CardTypeScale) => void;
-  /** Fitted point size of the name at 100%, so the row can show real numbers. */
-  nameBasePt: number;
-  /** True when the name no longer fits its slot at the current size. */
-  nameOverflows?: boolean;
+  value: CardTextSettings;
+  onChange: (next: CardTextSettings) => void;
+  /** Current layout — supplies real point sizes and overflow state. */
+  layout: FrontLayout;
 };
 
-const SLOTS: CardTypeSlot[] = ["name", "designation", "idNo"];
+const NAME_SLOTS: CardTypeSlot[] = ["surname", "otherNames"];
+const OTHER_SLOTS: CardTypeSlot[] = ["designation", "idNo"];
+
+const stepSx = { border: 1, borderColor: "var(--md-outline)", color: "primary.main" } as const;
+
+function overflowMessage(layout: FrontLayout) {
+  if (layout.surname.overflow) {
+    return "The surname is wider than its space on the card. Reduce the surname size or tighten the spacing.";
+  }
+  if (layout.otherNames.overflow) {
+    return "The other names are wider than their space on the card. Reduce their size or tighten the spacing.";
+  }
+  if (layout.name.tooTall) {
+    return "The two name lines are too tall and run into the rest of the card. Reduce the surname or other names size.";
+  }
+  return "The designation or ID number is wider than its space on the card. Reduce its size.";
+}
 
 /**
- * Point-size nudges for the three dynamic slots on the card. Operators think
- * in points, so each row shows the resulting size next to the percentage.
+ * Point-size nudges and long-name controls for the card's dynamic text.
+ * Operators think in points, so each row shows the resulting size.
  */
-export function TypeScaleControl({
-  value,
-  onChange,
-  nameBasePt,
-  nameOverflows,
-}: Props) {
-  const isDefault = SLOTS.every((s) => Math.abs(value[s] - 1) < 0.001);
-
+export function TypeScaleControl({ value, onChange, layout }: Props) {
   function step(slot: CardTypeSlot, direction: 1 | -1) {
     onChange({
       ...value,
-      [slot]: clampScale(value[slot] + direction * TYPE_SCALE_STEP),
+      scale: {
+        ...value.scale,
+        [slot]: clampScale(value.scale[slot] + direction * TYPE_SCALE_STEP),
+      },
     });
   }
 
-  function basePt(slot: CardTypeSlot) {
-    return slot === "name" ? nameBasePt : BASE_PT[slot];
+  const overflow = layout.name.overflow || layout.designation.overflow || layout.idNo.overflow;
+
+  function row(slot: CardTypeSlot) {
+    const pt = scaledPt(layout.basePt[slot], value.scale[slot]);
+    return (
+      <Stack key={slot} direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+        <Typography variant="body2" sx={{ flex: 1 }}>
+          {TYPE_SLOT_LABELS[slot]}
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontFamily: monoFont, width: 64, textAlign: "right" }}
+        >
+          {pt.toFixed(1)} pt
+        </Typography>
+        <IconButton
+          size="small"
+          sx={stepSx}
+          onClick={() => step(slot, -1)}
+          disabled={value.scale[slot] <= TYPE_SCALE_MIN}
+          aria-label={`Decrease ${TYPE_SLOT_LABELS[slot]} size`}
+        >
+          <MinusIcon className="size-4" />
+        </IconButton>
+        <Typography variant="body2" sx={{ fontFamily: monoFont, width: 44, textAlign: "center" }}>
+          {Math.round(value.scale[slot] * 100)}%
+        </Typography>
+        <IconButton
+          size="small"
+          sx={stepSx}
+          onClick={() => step(slot, 1)}
+          disabled={value.scale[slot] >= TYPE_SCALE_MAX}
+          aria-label={`Increase ${TYPE_SLOT_LABELS[slot]} size`}
+        >
+          <PlusIcon className="size-4" />
+        </IconButton>
+      </Stack>
+    );
   }
 
-  const stepButton =
-    "inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--md-outline)] text-[var(--md-primary)] transition-colors hover:bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)] disabled:border-[color-mix(in_srgb,var(--md-on-surface)_12%,transparent)] disabled:text-[color-mix(in_srgb,var(--md-on-surface)_38%,transparent)]";
-
   return (
-    <fieldset className="rounded-[var(--md-shape-md)] border border-[var(--md-outline-variant)] p-4">
-      <legend className="md-field-label px-1">Card type size</legend>
-      <p className="md-supporting-text mt-0 mb-3">
-        Nudge a slot when a long name or title sits awkwardly. The preview and
-        the printed PDF both follow these sizes.
-      </p>
+    <Box
+      component="fieldset"
+      sx={{ border: 1, borderColor: "divider", borderRadius: 3, p: 2, m: 0, minWidth: 0 }}
+    >
+      <Typography component="legend" variant="overline" color="text.secondary" sx={{ px: 0.5 }}>
+        Card text
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        The surname prints on the top line and the other names below it. Each line shrinks to fit
+        on its own; nudge either size here — the preview and the printed PDF follow the same
+        settings.
+      </Typography>
 
-      <div className="space-y-2">
-        {SLOTS.map((slot) => {
-          const pt = scaledPt(basePt(slot), value[slot]);
-          const percent = Math.round(value[slot] * 100);
-          return (
-            <div key={slot} className="flex items-center gap-3">
-              <span className="md-body-medium flex-1">
-                {TYPE_SLOT_LABELS[slot]}
-              </span>
-              <span className="md-data w-24 text-right text-[var(--md-on-surface-variant)]">
-                {pt.toFixed(1)} pt
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className={stepButton}
-                  onClick={() => step(slot, -1)}
-                  disabled={value[slot] <= TYPE_SCALE_MIN}
-                  aria-label={`Decrease ${TYPE_SLOT_LABELS[slot]} size`}
-                >
-                  <MinusIcon className="size-4" />
-                </button>
-                <span className="md-data w-12 text-center tabular-nums">
-                  {percent}%
-                </span>
-                <button
-                  type="button"
-                  className={stepButton}
-                  onClick={() => step(slot, 1)}
-                  disabled={value[slot] >= TYPE_SCALE_MAX}
-                  aria-label={`Increase ${TYPE_SLOT_LABELS[slot]} size`}
-                >
-                  <PlusIcon className="size-4" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <Typography variant="overline" color="text.secondary" component="p">
+        Name
+      </Typography>
+      <Stack spacing={1}>{NAME_SLOTS.map(row)}</Stack>
+      <FormControlLabel
+        sx={{ display: "flex", mt: 0.5 }}
+        control={
+          <Checkbox
+            size="small"
+            checked={value.tightName}
+            onChange={(e) => onChange({ ...value, tightName: e.target.checked })}
+          />
+        }
+        label={<Typography variant="body2">Tighter letter-spacing on both name lines</Typography>}
+      />
 
-      {nameOverflows ? (
-        <p className="md-body-medium mt-3 rounded-[var(--md-shape-xs)] bg-[var(--md-warning-container)] px-3 py-2 text-[var(--md-on-warning-container)]">
-          The name is wider than its space on the card. Reduce the name size or
-          shorten the middle name.
-        </p>
+      <Divider sx={{ my: 1.5 }} />
+      <Stack spacing={1}>{OTHER_SLOTS.map(row)}</Stack>
+
+      {overflow ? (
+        <Alert severity="warning" sx={{ mt: 1.5 }}>
+          {overflowMessage(layout)}
+        </Alert>
       ) : null}
 
-      {!isDefault ? (
-        <button
-          type="button"
+      {!isDefaultTextSettings(value) ? (
+        <Button
+          size="small"
+          variant="text"
+          sx={{ mt: 1.5, ml: -1 }}
           onClick={() =>
-            onChange({ name: 1, designation: 1, idNo: 1 })
+            onChange({ ...DEFAULT_TEXT_SETTINGS, scale: { ...DEFAULT_TEXT_SETTINGS.scale } })
           }
-          className="md-label-large mt-3 text-[var(--md-primary)] hover:underline"
         >
-          Reset to default sizes
-        </button>
+          Reset to defaults
+        </Button>
       ) : null}
-    </fieldset>
+    </Box>
   );
 }

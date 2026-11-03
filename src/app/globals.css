@@ -1,3 +1,5 @@
+/* MUI's styles sit between Tailwind's base and utilities, so utilities still win. */
+@layer theme, base, mui, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -60,6 +62,23 @@
   font-family: "Poppins";
   src: url("/fonts/Poppins-Bold.ttf") format("truetype");
   font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Inter Display — NPERA card typography (same files the PDF embeds). */
+@font-face {
+  font-family: "Inter Display";
+  src: url("/fonts/InterDisplay-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter Display";
+  src: url("/fonts/InterDisplay-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
   font-style: normal;
   font-display: swap;
 }
@@ -526,90 +545,6 @@
     color: var(--md-on-secondary-container);
   }
 
-  /* ---- Data table ------------------------------------------------------ */
-  .md-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-    line-height: 1.25rem;
-    letter-spacing: 0.018em;
-    color: var(--md-on-surface);
-  }
-
-  .md-table thead th {
-    height: 2.75rem;
-    padding: 0 1rem;
-    text-align: left;
-    font-family: var(--font-display);
-    font-size: 0.6875rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--md-on-surface-variant);
-    background: transparent;
-    border-bottom: 1px solid var(--md-outline);
-    white-space: nowrap;
-  }
-
-  .md-table tbody td {
-    height: 3.25rem; /* 52dp data rows */
-    padding: 0.5rem 1rem;
-    border-bottom: 1px solid var(--md-outline-variant);
-  }
-
-  .md-table tbody tr:last-child td {
-    border-bottom: 0;
-  }
-
-  /* Hover state layer, per M3 */
-  .md-table tbody tr {
-    transition: background-color 0.12s ease;
-  }
-
-  .md-table tbody tr:hover {
-    background: color-mix(
-      in srgb,
-      var(--md-on-surface) calc(var(--md-state-hover) * 100%),
-      transparent
-    );
-  }
-
-  /* ---- Chips (status pills / filter chips) ----------------------------- */
-  .md-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    height: 2rem;
-    padding: 0 0.75rem;
-    border-radius: var(--md-shape-sm);
-    border: 1px solid var(--md-outline);
-    background: transparent;
-    font-size: 0.875rem;
-    font-weight: 500;
-    letter-spacing: 0.007em;
-    color: var(--md-on-surface-variant);
-    transition:
-      background-color 0.15s ease,
-      border-color 0.15s ease,
-      color 0.15s ease;
-  }
-
-  .md-chip:hover {
-    background: color-mix(
-      in srgb,
-      var(--md-on-surface) calc(var(--md-state-hover) * 100%),
-      transparent
-    );
-    color: var(--md-on-surface);
-  }
-
-  .md-chip[aria-pressed="true"],
-  .md-chip[data-selected="true"] {
-    background: var(--md-secondary-container);
-    border-color: transparent;
-    color: var(--md-on-secondary-container);
-  }
-
   /* ---- FAB -------------------------------------------------------------- */
   .md-fab {
     display: inline-flex;
@@ -633,25 +568,6 @@
   .md-fab:hover {
     filter: brightness(0.97);
     box-shadow: var(--md-elevation-3);
-  }
-
-  /* ---- Manifest ---------------------------------------------------------
-   * The staff list is a production queue, not a collection of cards: one flat
-   * sheet, hairline rules, no container radius. Reads like the printer's
-   * docket it stands in for, and gives the columns their full width.
-   */
-  .manifest {
-    background: var(--md-surface-container-lowest);
-    border-top: 1px solid var(--md-outline-variant);
-    border-bottom: 1px solid var(--md-outline-variant);
-  }
-
-  .manifest-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 1rem;
-    padding: 0 0 1rem;
   }
 
   /* ---- Stage rail --------------------------------------------------------
@@ -683,19 +599,116 @@
   .stage-seg[data-state="blocked"] {
     background: var(--md-error);
   }
-
-  /* ---- Pagination -------------------------------------------------------- */
-  .md-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 1.5rem;
-    min-height: 3.5rem;
-    padding: 0.5rem 1rem;
-    color: var(--md-on-surface-variant);
-  }
 }
 
+/* ── Motion ─────────────────────────────────────────────────────────────
+ * One easing family for the whole app: decelerate in, accelerate out.
+ */
+:root {
+  --nsc-ease-out: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  --nsc-ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@layer components {
+  /*
+   * Dialog pop. MUI's Fade writes `opacity` inline on .MuiDialog-container
+   * while opening and closing; the paper scales/slides with it, so every
+   * dialog gets a matching enter AND exit motion with no per-dialog code.
+   */
+  .MuiDialog-container .MuiDialog-paper {
+    transition:
+      transform 260ms var(--nsc-ease-out),
+      box-shadow 260ms ease;
+    transform: none;
+  }
+  .MuiDialog-container[style*="opacity: 0"] .MuiDialog-paper {
+    transform: translateY(12px) scale(0.96);
+    transition-timing-function: var(--nsc-ease-in);
+    transition-duration: 180ms;
+  }
+
+  @keyframes nsc-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes nsc-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes nsc-slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes nsc-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .nsc-anim-fade {
+    animation: nsc-fade-in 180ms ease-out both;
+  }
+  .nsc-anim-pop {
+    animation: nsc-pop-in 260ms var(--nsc-ease-out) both;
+  }
+  .nsc-anim-slide-up {
+    animation: nsc-slide-up 240ms var(--nsc-ease-out) both;
+  }
+
+  /* "Refreshing…" pill — slides down from the app bar while syncing. */
+  .nsc-refresh-pill {
+    position: fixed;
+    top: 76px;
+    left: 50%;
+    z-index: 1400;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 10px;
+    border-radius: 999px;
+    background: var(--md-inverse-surface, #2e3036);
+    color: var(--md-inverse-on-surface, #f1f0f7);
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: var(--md-elevation-3);
+    pointer-events: none;
+    transform: translate(-50%, -12px);
+    opacity: 0;
+    transition:
+      opacity 160ms ease,
+      transform 220ms var(--nsc-ease-out);
+  }
+  .nsc-refresh-pill[data-show="true"] {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    /* Don't flash for refreshes that finish almost instantly. */
+    transition-delay: 120ms;
+  }
+  .nsc-refresh-spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: nsc-spin 700ms linear infinite;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

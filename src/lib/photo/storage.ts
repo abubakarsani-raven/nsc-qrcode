@@ -62,7 +62,12 @@ function localRoot() {
 }
 
 function localPath(staffId: string, key: string) {
-  return path.join(localRoot(), staffId, key);
+  const root = localRoot();
+  const full = path.resolve(root, staffId, key);
+  if (!full.startsWith(root + path.sep)) {
+    throw new Error(`Refusing photo path outside storage: ${staffId}/${key}`);
+  }
+  return full;
 }
 
 /** Folder prefix keeps one staff member's assets together in the media library. */
@@ -75,24 +80,6 @@ const FOLDER = process.env.CLOUDINARY_FOLDER ?? "nsc-id-photos";
  */
 export function publicId(staffId: string, key: string) {
   return `${FOLDER}/${staffId}/${key.replace(/\.[^.]+$/, "")}`;
-}
-
-/**
- * Public CDN URL for a stored photo. Built via the Cloudinary SDK so the path
- * includes the delivery prefix Cloudinary expects (bare `/image/upload/<id>`
- * URLs 403 on this account).
- */
-export async function photoUrl(
-  staffId: string,
-  key: string,
-): Promise<string | null> {
-  if (!usingCloudinary()) return null;
-  const cloudinary = await cloudinaryClient();
-  return cloudinary.url(publicId(staffId, key), {
-    resource_type: "image",
-    type: "upload",
-    secure: true,
-  });
 }
 
 async function cloudinaryClient() {
@@ -110,6 +97,28 @@ async function cloudinaryClient() {
   return v2;
 }
 
+/**
+ * Bytes this server wrote recently. After an overwrite the CDN keeps serving
+ * the previous image for a while (a cache-busting query doesn't get past it),
+ * so a re-cut preview read straight back showed the old photo position.
+ * Kept on globalThis so every route bundle shares one map.
+ */
+const RECENT_TTL_MS = 10 * 60 * 1000;
+const RECENT_MAX = 64;
+type RecentWrite = { buffer: Buffer; version?: number; at: number };
+const recentWrites: Map<string, RecentWrite> = ((
+  globalThis as { __recentPhotoWrites?: Map<string, RecentWrite> }
+).__recentPhotoWrites ??= new Map());
+
+function rememberWrite(staffId: string, key: string, entry: RecentWrite) {
+  const id = `${staffId}/${key}`;
+  recentWrites.delete(id);
+  recentWrites.set(id, entry);
+  while (recentWrites.size > RECENT_MAX) {
+    recentWrites.delete(recentWrites.keys().next().value!);
+  }
+}
+
 /** Store bytes under a stable key. Overwrites any previous value. */
 export async function putPhoto(
   staffId: string,
@@ -124,7 +133,7 @@ export async function putPhoto(
   }
 
   const cloudinary = await cloudinaryClient();
-  await new Promise<void>((resolve, reject) => {
+  const version = await new Promise<number | undefined>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         public_id: publicId(staffId, key),
@@ -133,10 +142,11 @@ export async function putPhoto(
         overwrite: true,
         invalidate: true,
       },
-      (error) => (error ? reject(error) : resolve()),
+      (error, result) => (error ? reject(error) : resolve(result?.version)),
     );
     stream.end(buffer);
   });
+  rememberWrite(staffId, key, { buffer, version, at: Date.now() });
 }
 
 /** Retrieve previously stored bytes. Throws if the key does not exist. */
@@ -145,11 +155,16 @@ export async function getPhoto(staffId: string, key: string): Promise<Buffer> {
     return fs.readFile(localPath(staffId, key));
   }
 
+  const recent = recentWrites.get(`${staffId}/${key}`);
+  if (recent && Date.now() - recent.at < RECENT_TTL_MS) return recent.buffer;
+
   const cloudinary = await cloudinaryClient();
+  // The version segment addresses the latest upload, past any cached older copy.
   const base = cloudinary.url(publicId(staffId, key), {
     resource_type: "image",
     type: "upload",
     secure: true,
+    ...(recent?.version ? { version: recent.version } : {}),
   });
 
   // This runs immediately after the browser uploaded the original, which is

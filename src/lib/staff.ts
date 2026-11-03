@@ -4,27 +4,7 @@ import type {
   Staff,
   StaffPublished,
 } from "@/generated/prisma/client";
-import { FRONT_DEFAULT_BACK, nameColorMismatch } from "@/lib/id-card/slots.generated";
-
-export const PUBLISH_FIELDS = [
-  "firstName",
-  "middleName",
-  "lastName",
-  "designation",
-  "idNumber",
-  "photoPreviewKey",
-  "officeLine",
-  "emergencyContactName",
-  "emergencyContactPhone",
-  "posting",
-  "department",
-  "bloodGroup",
-  "genotype",
-  "frontTemplate",
-  "backTemplate",
-] as const;
-
-export type PublishField = (typeof PUBLISH_FIELDS)[number];
+import { FRONT_DEFAULT_BACK } from "@/lib/id-card/slots.generated";
 
 export function displayName(s: {
   firstName: string;
@@ -94,13 +74,6 @@ export function defaultBackFor(front: FrontTemplate): BackTemplate {
   return FRONT_DEFAULT_BACK[front] as BackTemplate;
 }
 
-export function templateWarning(front: FrontTemplate, back: BackTemplate) {
-  if (nameColorMismatch(front, back)) {
-    return "Front and back colour families differ (green vs blue).";
-  }
-  return null;
-}
-
 export function draftVsPublishedDiff(draft: Staff, published: StaffPublished | null) {
   if (!published) return null;
   const diffs: { field: string; draft: string; published: string }[] = [];
@@ -125,4 +98,14 @@ export function draftVsPublishedDiff(draft: Staff, published: StaffPublished | n
     }
   }
   return diffs;
+}
+
+/** Drop medical fields for roles that may not see them. */
+export function withoutMedical<T extends { bloodGroup?: string | null; genotype?: string | null }>(
+  staff: T,
+): Omit<T, "bloodGroup" | "genotype"> {
+  const copy = { ...staff };
+  delete copy.bloodGroup;
+  delete copy.genotype;
+  return copy;
 }

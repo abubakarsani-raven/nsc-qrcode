@@ -2,51 +2,72 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { generateQrToken, publicVerifyUrl, assertUrlBudget } from "@/lib/qr";
 
-async function upsertUser(
+type SeedRole = "ADMIN" | "DATA_ENTRY" | "APPROVER" | "PRINTER";
+
+const DEFAULT_ADMIN_PASSWORD = "ChangeMeAdmin1!";
+
+/** Production deploy (Vercel/Railway/NODE_ENV) — demo data stays out. */
+function isProduction() {
+  return (
+    process.env.VERCEL_ENV === "production" ||
+    process.env.RAILWAY_ENVIRONMENT_NAME === "production" ||
+    process.env.NODE_ENV === "production"
+  );
+}
+
+/**
+ * Create the user if missing. An existing user's password is only replaced
+ * when `resetPassword` is set — the seed runs on every build, and silently
+ * resetting passwords (and re-activating disabled accounts) each deploy is
+ * not something production should do.
+ */
+async function ensureUser(
   email: string,
   name: string,
-  role: "ADMIN" | "DATA_ENTRY" | "APPROVER" | "PRINTER",
+  role: SeedRole,
   password: string,
+  resetPassword = false,
 ) {
-  const passwordHash = await bcrypt.hash(password, 12);
-  return prisma.user.upsert({
-    where: { email },
-    update: { name, role, passwordHash, active: true },
-    create: { email, name, role, passwordHash },
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    if (!resetPassword) return existing;
+    return prisma.user.update({
+      where: { email },
+      data: { passwordHash: await bcrypt.hash(password, 12) },
+    });
+  }
+  return prisma.user.create({
+    data: { email, name, role, passwordHash: await bcrypt.hash(password, 12) },
   });
 }
 
 /** Idempotent seed — safe for build, startup, and repeated deploys. */
 export async function seedDatabase() {
-  const adminPassword = process.env.ADMIN_PASSWORD ?? "ChangeMeAdmin1!";
+  const prod = isProduction();
+  const envPassword = process.env.ADMIN_PASSWORD?.trim();
+  const adminPassword = envPassword || DEFAULT_ADMIN_PASSWORD;
   const adminEmail = (
     process.env.ADMIN_EMAIL ?? "admin@shipperscouncil.gov.ng"
   ).toLowerCase();
+  const resetAdmin = process.env.ADMIN_PASSWORD_RESET === "1";
 
-  const admin = await upsertUser(
-    adminEmail,
-    "System Admin",
-    "ADMIN",
-    adminPassword,
-  );
-  await upsertUser(
-    "entry@shipperscouncil.gov.ng",
-    "Data Entry",
-    "DATA_ENTRY",
-    "ChangeMeEntry1!",
-  );
-  await upsertUser(
-    "approver@shipperscouncil.gov.ng",
-    "Approver",
-    "APPROVER",
-    "ChangeMeApprove1!",
-  );
-  await upsertUser(
-    "printer@shipperscouncil.gov.ng",
-    "Printer",
-    "PRINTER",
-    "ChangeMePrint1!",
-  );
+  // Never *write* the well-known default password in production.
+  const adminExists = await prisma.user.findUnique({ where: { email: adminEmail }, select: { id: true } });
+  if (prod && adminPassword === DEFAULT_ADMIN_PASSWORD && (!adminExists || resetAdmin)) {
+    throw new Error("Set ADMIN_PASSWORD to a strong, non-default value before seeding production.");
+  }
+
+  // ADMIN_PASSWORD_RESET=1 is the deliberate way to recover the admin login.
+  const admin = await ensureUser(adminEmail, "System Admin", "ADMIN", adminPassword, resetAdmin);
+
+  // Demo accounts with well-known passwords: development only, or opt-in.
+  const seedDemo = !prod || process.env.SEED_DEMO === "1";
+  if (!seedDemo) {
+    return { adminEmail, adminPassword: "(from ADMIN_PASSWORD)", sampleUrl: "(skipped in production)" };
+  }
+  await ensureUser("entry@shipperscouncil.gov.ng", "Data Entry", "DATA_ENTRY", "ChangeMeEntry1!");
+  await ensureUser("approver@shipperscouncil.gov.ng", "Approver", "APPROVER", "ChangeMeApprove1!");
+  await ensureUser("printer@shipperscouncil.gov.ng", "Printer", "PRINTER", "ChangeMePrint1!");
 
   const existing = await prisma.staff.findUnique({
     where: { idNumber: "1234567890" },

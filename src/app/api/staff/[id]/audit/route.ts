@@ -7,7 +7,7 @@ type Ctx = { params: Promise<{ id: string }> };
 /** Clear a staff record's audit history. Admin only. */
 export async function DELETE(_req: Request, ctx: Ctx) {
   const gate = await requirePermission("clearAudit");
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
   const { id } = await ctx.params;
 
   const staff = await prisma.staff.findUnique({
@@ -24,7 +24,7 @@ export async function DELETE(_req: Request, ctx: Ctx) {
     await tx.auditEvent.create({
       data: {
         staffId: id,
-        actorId: gate.session!.user.id,
+        actorId: gate.session.user.id,
         type: "AUDIT_CLEARED",
         metadata: JSON.stringify({ removed: deleted.count }),
       },

@@ -11,9 +11,9 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, ctx: Ctx) {
   const gate = await requirePermission("regenerateQr");
-  if ("error" in gate && gate.error) return gate.error;
+  if (gate.error) return gate.error;
   const { id } = await ctx.params;
-  const body = schema.safeParse(await req.json());
+  const body = schema.safeParse(await req.json().catch(() => null));
   if (!body.success) {
     return NextResponse.json(
       { error: 'Type confirmation "REGENERATE" required' },
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     data: { qrToken },
   });
 
-  await audit(gate.session!.user.id, "QR_REGENERATED", id, {
+  await audit(gate.session.user.id, "QR_REGENERATED", id, {
     previousPrintedAt: existing.lastPrintedAt,
   });
 

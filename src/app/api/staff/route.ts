@@ -1,60 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { FRONT_TEMPLATE_IDS, type FrontTemplateId } from "@/lib/id-card/slots.generated";
 import { prisma } from "@/lib/prisma";
-import { requirePermission } from "@/lib/session";
+import { requireSession } from "@/lib/session";
+import { can } from "@/lib/auth";
 import { generateQrToken, publicVerifyUrl, assertUrlBudget } from "@/lib/qr";
 import { audit } from "@/lib/audit";
-import { defaultBackFor } from "@/lib/staff";
-import type { Prisma } from "@/generated/prisma/client";
-
-const createSchema = z.object({
-  idNumber: z.string().min(1),
-  firstName: z.string().min(1),
-  middleName: z.string().optional().nullable(),
-  lastName: z.string().min(1),
-  designation: z.string().min(1),
-  posting: z.string().optional().nullable(),
-  department: z.string().optional().nullable(),
-  dateIssued: z.string().optional().nullable(),
-  officeLine: z.string().optional().nullable(),
-  emergencyContactName: z.string().optional().nullable(),
-  emergencyContactPhone: z.string().optional().nullable(),
-  bloodGroup: z.string().optional().nullable(),
-  genotype: z.string().optional().nullable(),
-  frontTemplate: z
-    .enum([
-      "WAVE_GREEN",
-      "WAVE_BLUE",
-      "BAR_BLUE_SQUARE",
-      "BAR_BLUE_CIRCLE",
-      "BAR_GREEN_CIRCLE",
-      "BAR_GREEN_SQUARE",
-    ])
-    .optional(),
-  backTemplate: z
-    .enum([
-      "BACK_WAVE_GREEN",
-      "BACK_WAVE_BLUE",
-      "BACK_BAR_BLUE",
-      "BACK_BAR_GREEN",
-    ])
-    .optional(),
-  cardTypeScale: z.string().nullable().optional(),
-});
+import { defaultBackFor, withoutMedical } from "@/lib/staff";
+import { parseTextSettings, serializeTextSettings } from "@/lib/id-card/type-scale";
+import { parseJson, prismaErrorResponse } from "@/lib/api";
+import { staffCreateSchema } from "@/lib/staff-schema";
+import type { Prisma, Role } from "@/generated/prisma/client";
 
 export async function GET(req: NextRequest) {
-  const gate = await requirePermission("createEdit");
-  if ("error" in gate && gate.error) {
-    // Printers can list for export
-    const printGate = await requirePermission("print");
-    if ("error" in printGate && printGate.error) return printGate.error;
+  const gate = await requireSession();
+  if (gate.error) return gate.error;
+  const role = gate.session.user.role as Role;
+  // Editors list to work on records; printers list to export them.
+  if (!can(role, "createEdit") && !can(role, "print")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const sp = req.nextUrl.searchParams;
   const q = sp.get("q")?.trim();
   const status = sp.get("status");
   const approvalState = sp.get("approvalState");
-  const missingPhoto = sp.get("missingPhoto") === "1";
   const frontTemplate = sp.get("frontTemplate");
 
   const where: Prisma.StaffWhereInput = {};
@@ -62,15 +31,18 @@ export async function GET(req: NextRequest) {
   if (approvalState === "PENDING" || approvalState === "APPROVED") {
     where.approvalState = approvalState;
   }
-  if (missingPhoto) where.photoPreviewKey = null;
-  if (frontTemplate) where.frontTemplate = frontTemplate as Prisma.EnumFrontTemplateFilter["equals"];
+  if (sp.get("missingPhoto") === "1") where.photoPreviewKey = null;
+  if (frontTemplate && FRONT_TEMPLATE_IDS.includes(frontTemplate as FrontTemplateId)) {
+    where.frontTemplate = frontTemplate as FrontTemplateId;
+  }
   if (q) {
+    const contains = { contains: q, mode: "insensitive" as const };
     where.OR = [
-      { idNumber: { contains: q } },
-      { firstName: { contains: q } },
-      { lastName: { contains: q } },
-      { middleName: { contains: q } },
-      { designation: { contains: q } },
+      { idNumber: contains },
+      { firstName: contains },
+      { lastName: contains },
+      { middleName: contains },
+      { designation: contains },
     ];
   }
 
@@ -80,20 +52,35 @@ export async function GET(req: NextRequest) {
     include: { published: true, approvedBy: { select: { id: true, name: true } } },
   });
 
+  if (!can(role, "medical")) {
+    return NextResponse.json({
+      staff: staff.map(withoutMedical),
+    });
+  }
   return NextResponse.json({ staff });
 }
 
 export async function POST(req: NextRequest) {
-  const gate = await requirePermission("createEdit");
-  if ("error" in gate && gate.error) return gate.error;
+  const gate = await requireSession();
+  if (gate.error) return gate.error;
+  const role = gate.session.user.role as Role;
+  if (!can(role, "createEdit")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
-  const body = createSchema.safeParse(await req.json());
-  if (!body.success) {
-    return NextResponse.json({ error: body.error.flatten() }, { status: 400 });
+  const body = await parseJson(req, staffCreateSchema);
+  if (body.error) return body.error;
+  const { cardTypeScale, ...fields } = body.data;
+
+  // Same rule as PATCH: only medical roles may set medical fields.
+  if (!can(role, "medical")) {
+    fields.bloodGroup = undefined;
+    fields.genotype = undefined;
   }
 
   const existing = await prisma.staff.findUnique({
-    where: { idNumber: body.data.idNumber },
+    where: { idNumber: fields.idNumber },
+    select: { id: true },
   });
   if (existing) {
     return NextResponse.json(
@@ -102,24 +89,32 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const front = body.data.frontTemplate ?? "WAVE_GREEN";
-  const back = body.data.backTemplate ?? defaultBackFor(front);
+  const front = fields.frontTemplate ?? "WAVE_GREEN";
+  const back = fields.backTemplate ?? defaultBackFor(front);
   const qrToken = generateQrToken();
   assertUrlBudget(publicVerifyUrl(qrToken));
 
-  const staff = await prisma.staff.create({
-    data: {
-      ...body.data,
-      frontTemplate: front,
-      backTemplate: back,
-      qrToken,
-      approvalState: "PENDING",
-    },
-  });
+  try {
+    const staff = await prisma.staff.create({
+      data: {
+        ...fields,
+        cardTypeScale: serializeTextSettings(parseTextSettings(cardTypeScale)),
+        frontTemplate: front,
+        backTemplate: back,
+        qrToken,
+        approvalState: "PENDING",
+      },
+    });
 
-  await audit(gate.session!.user.id, "CREATED", staff.id, {
-    idNumber: staff.idNumber,
-  });
+    await audit(gate.session.user.id, "CREATED", staff.id, {
+      idNumber: staff.idNumber,
+    });
 
-  return NextResponse.json({ staff }, { status: 201 });
+    return NextResponse.json({ staff }, { status: 201 });
+  } catch (err) {
+    // A concurrent create with the same ID number lands here (P2002).
+    const mapped = prismaErrorResponse(err);
+    if (mapped) return mapped;
+    throw err;
+  }
 }
